@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euxo pipefail
-# An early version for DAPO (w/o Token-Level Loss & Dynamic Sampling)
+# DAPO (w/o Dynamic Sampling)
 
 project_name='DAPO-verl'
-exp_name='DAPO-Early-Qwen2.5-32B'
+exp_name='DAPO-wo-DS-Qwen2.5-32B'
 
 adv_estimator=grpo
 
@@ -21,13 +21,12 @@ enable_overlong_buffer=True
 overlong_buffer_len=$((1024 * 4))
 overlong_penalty_factor=1.0
 
-loss_agg_mode="seq-mean-token-mean"
+loss_agg_mode="token-mean"
 
 enable_filter_groups=False
-gen_prompt_bsz=512 # NOTE: no filtering here
 train_prompt_bsz=512
-train_prompt_mini_bsz=32
 n_resp_per_prompt=16
+train_prompt_mini_bsz=32
 
 # Ray
 RAY_ADDRESS=${RAY_ADDRESS:-"http://localhost:8265"}
@@ -47,7 +46,6 @@ top_p=1.0
 top_k=-1 # 0 for HF rollout, -1 for vLLM rollout
 val_top_p=0.7
 
-
 # Performance Related Parameter
 sp_size=8
 use_dynamic_bsz=True
@@ -65,7 +63,6 @@ ray job submit --no-wait --runtime-env="${RUNTIME_ENV}" \
     data.truncation='left' \
     data.max_prompt_length=${max_prompt_length} \
     data.max_response_length=${max_response_length} \
-    data.gen_batch_size=${gen_prompt_bsz} \
     data.train_batch_size=${train_prompt_bsz} \
     actor_rollout_ref.rollout.n=${n_resp_per_prompt} \
     algorithm.adv_estimator=${adv_estimator} \

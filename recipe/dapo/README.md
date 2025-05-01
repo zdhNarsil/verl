@@ -37,17 +37,17 @@ cd verl # Repo root
 export RAY_ADDRESS="http://${RAY_IP:-localhost}:8265" # The Ray cluster address to connect to
 export WORKING_DIR="${PWD}" # The local directory to package to the Ray cluster
 # Set the runtime environment like env vars and pip packages for the Ray cluster in yaml
-export RUNTIME_ENV="./recipe/dapo/runtime_env.yaml"
+export RUNTIME_ENV="./recipe/dapo/runtime_env.yaml" # This enables VLLM_USE_V1=1
 bash recipe/dapo/run_dapo_qwen2.5_32b.sh
 ```
 
 ## Reproduction Runs
 
-| Setup                                        | AIME 2024 Acc. | Training Script                                                  | Training Record                                                                           |
-| -------------------------------------------- | -------------- | ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| DAPO w/o Token-level Loss & Dynamic Sampling | 44%            | [run_dapo_early_qwen2.5_32b.sh](./run_dapo_early_qwen2.5_32b.sh) | [W&B](https://wandb.ai/verl-org/DAPO%20Reproduction%20on%20verl/workspace?nw=wmb4qxfht0n) |
-| DAPO w/o Dynamic Sampling                    | 50%            | [run_dapo_wo_ds_qwen2.5_32b.sh](./run_dapo_wo_ds_qwen2.5_32b.sh) | [W&B](https://wandb.ai/verl-org/DAPO%20Reproduction%20on%20verl/workspace?nw=wmb4qxfht0n) |
-| DAPO                                         | 52%            | [run_dapo_qwen2.5_32b.sh](./run_dapo_qwen2.5_32b.sh)             | [W&B](https://wandb.ai/verl-org/DAPO%20Reproduction%20on%20verl/workspace?nw=wmb4qxfht0n) |
+| Setup                                        | AIME 2024 Acc. | Image                                                                | Training Script                                                  | Training Record                                                                           |
+| -------------------------------------------- | -------------- | -------------------------------------------------------------------- | ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| DAPO                                         | 52%            | `hiyouga/verl:ngc-th2.6.0-cu126-vllm0.8.3-flashinfer0.2.2-cxx11abi0` | [run_dapo_qwen2.5_32b.sh](./run_dapo_qwen2.5_32b.sh)             | [W&B](https://wandb.ai/verl-org/DAPO%20Reproduction%20on%20verl/workspace?nw=wmb4qxfht0n) |
+| DAPO w/o Dynamic Sampling                    | 50%            | `hiyouga/verl:ngc-th2.6.0-cu126-vllm0.8.3-flashinfer0.2.2-cxx11abi0` | [run_dapo_wo_ds_qwen2.5_32b.sh](./run_dapo_wo_ds_qwen2.5_32b.sh) | [W&B](https://wandb.ai/verl-org/DAPO%20Reproduction%20on%20verl/workspace?nw=wmb4qxfht0n) |
+| DAPO w/o Token-level Loss & Dynamic Sampling | 44%            | `hiyouga/verl:ngc-th2.5.1-cu120-vllm0.7.4-hotfix`                    | [run_dapo_early_qwen2.5_32b.sh](./run_dapo_early_qwen2.5_32b.sh) | [W&B](https://wandb.ai/verl-org/DAPO%20Reproduction%20on%20verl/workspace?nw=wmb4qxfht0n) |
 
 ## Configuration
 

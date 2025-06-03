@@ -26,7 +26,7 @@ from verl.utils.device import is_cuda_available
 from .dapo_ray_trainer import RayDAPOTrainer
 
 
-@hydra.main(config_path="config", config_name="dapo_trainer", version_base=None)
+@hydra.main(config_path="config", config_name="dap_trainer", version_base=None)
 def main(config):
     run_ppo(config)
 

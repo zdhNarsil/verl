@@ -84,18 +84,6 @@ def default_compute_score(data_source, solution_str, ground_truth, extra_info=No
 
         res = search_r1_like_qa_em.compute_score(solution_str, ground_truth)
 
-    elif data_source in [
-        "aime",
-        "aime25",
-        "math",
-        "amc",
-        "olympiad_bench",
-        "minerva",
-        "omni-math",
-    ]:
-        from . import entropy_math
-
-        res = entropy_math.compute_score(solution_str, ground_truth)
     else:
         raise NotImplementedError(f"Reward function is not implemented for {data_source=}")
 

@@ -25,6 +25,13 @@ import torch
 
 import verl.utils.torch_functional as verl_F
 
+POLICY_LOSS_REGISTRY = {}
+
+def register_policy_loss(name):
+    def decorator(func):
+        POLICY_LOSS_REGISTRY[name] = func
+        return func
+    return decorator
 
 class AdaptiveKLController:
     """
@@ -451,17 +458,14 @@ def agg_loss(loss_mat: torch.Tensor, loss_mask: torch.Tensor, loss_agg_mode: str
 
     return loss
 
-
+@register_policy_loss("vanilla")
 def compute_policy_loss(
     old_log_prob,
     log_prob,
     advantages,
     response_mask,
-    cliprange=None,
-    cliprange_low=None,
-    cliprange_high=None,
-    clip_ratio_c=3.0,
     loss_agg_mode: str = "token-mean",
+    config=None,
 ):
     """
     Compute the clipped policy objective and related metrics for PPO.
@@ -491,6 +495,11 @@ def compute_policy_loss(
         loss_agg_mode (str, optional):
             Aggregation mode for `agg_loss`. Defaults to "token-mean".
     """
+    cliprange=config.clip_ratio
+    cliprange_low=config.clip_ratio_low if config.clip_ratio_low is not None else cliprange
+    cliprange_high=config.clip_ratio_high if config.clip_ratio_high is not None else cliprange
+    clip_ratio_c=config.get("clip_ratio_c", 3.)
+
     assert clip_ratio_c > 1.0, "The lower bound of the clip_ratio_c for dual-clip PPO should be greater than 1.0," + f" but get the value: {clip_ratio_c}."
 
     negative_approx_kl = log_prob - old_log_prob
@@ -515,19 +524,14 @@ def compute_policy_loss(
 
     return pg_loss, pg_clipfrac, ppo_kl, pg_clipfrac_lower
 
-
+@register_policy_loss("clip_cov")
 def compute_policy_loss_clip_cov(
     old_log_prob,
     log_prob,
     advantages,
     response_mask,
-    cliprange=None,
-    cliprange_low=None,
-    cliprange_high=None,
     loss_agg_mode="token-mean",
-    clip_ratio=0.0002,
-    clip_cov_lb=1.0,
-    clip_cov_ub=5.0,
+    config=None,
 ):
     """
     Compute the clipped policy objective and related metrics for Clip-Cov.
@@ -553,14 +557,22 @@ def compute_policy_loss_clip_cov(
             Upper clip range for dual-clip PPO. Defaults to same as `cliprange`.
         loss_agg_mode (str, optional):
             Aggregation mode for `agg_loss`. Defaults to "token-mean".
-        clip_ratio (float, optional):
+        clip_cvo_ratio (float, optional):
             Ratio for clipping the covariance. Defaults to 0.0002.
         clip_cov_lb (float, optional):
             Lower bound for clipping covariance. Defaults to 1.0.
         clip_cov_ub (float, optional):
             Upper bound for clipping covariance. Defaults to 5.0.
     """
-    assert clip_ratio > 0, "clip_ratio should be larger than 0."
+    clip_cov_ratio = config.clip_cov_ratio if config.clip_cov_ratio is not None else 0.0002
+    cliprange = config.clip_ratio
+    cliprange_low=config.clip_ratio_low if config.clip_ratio_low is not None else cliprange
+    cliprange_high=config.clip_ratio_high if config.clip_ratio_high is not None else cliprange
+    clip_cov_ub = config.clip_cov_ub if config.clip_cov_ub is not None else 5.0
+    clip_cov_lb = config.clip_cov_lb if config.clip_cov_lb is not None else 1.0
+    
+    assert clip_cov_ratio > 0, "clip_ratio should be larger than 0."
+
     negative_approx_kl = log_prob - old_log_prob
     ratio = torch.exp(negative_approx_kl)
     ppo_kl = verl_F.masked_mean(-negative_approx_kl, response_mask)
@@ -580,7 +592,7 @@ def compute_policy_loss_clip_cov(
     cov_all[response_mask == 0] = -torch.inf
     cov_all[clip_by_origin] = -torch.inf
     
-    clip_num = max(int(clip_ratio * response_mask.sum().item()), 1)
+    clip_num = max(int(clip_cov_ratio * response_mask.sum().item()), 1)
     top_k_idx = (cov_all < clip_cov_ub) & (cov_all > clip_cov_lb) & (response_mask > 0)
     top_k_idx = torch.nonzero(top_k_idx)
     
@@ -599,15 +611,14 @@ def compute_policy_loss_clip_cov(
 
     return pg_loss, pg_clipfrac, ppo_kl, torch.tensor(0.)
 
-
+@register_policy_loss("kl_cov")
 def compute_policy_loss_kl_cov(
     old_log_prob,
     log_prob,
     advantages,
     response_mask,
     loss_agg_mode="token-mean",
-    k_ratio=0.0002,
-    ppo_kl_coef=1,
+    config=None,
 ):
     """
     Compute the clipped policy objective and related metrics for Clip-Cov.
@@ -631,7 +642,11 @@ def compute_policy_loss_kl_cov(
         ppo_kl_coef (float, optional):
             Coefficient for the KL penalty term in the loss. Defaults to 1.
     """
+    k_ratio = config.k_ratio if config.k_ratio is not None else 0.0002
+    ppo_kl_coef = config.ppo_kl_coef if config.ppo_kl_coef is not None else 1.0
+
     assert k_ratio > 0, "k_ratio should be larger than 0."
+
     negative_approx_kl = log_prob - old_log_prob
     abs_kl = negative_approx_kl.abs()
     ratio = torch.exp(negative_approx_kl)

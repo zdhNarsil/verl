@@ -16,6 +16,7 @@
 Based on HF math_verify, verl, open reasoner zero, etc.
 """
 
+import os
 import re
 import signal
 from itertools import islice, zip_longest
@@ -24,25 +25,23 @@ from typing import Optional
 
 import sympy
 from latex2sympy2_extended import latex2sympy
-from math_verify import (ExprExtractionConfig, LatexExtractionConfig, parse,
-                         verify)
+from math_verify import ExprExtractionConfig, LatexExtractionConfig, parse, verify
 from pylatexenc import latex2text
 from sympy import N, simplify
 from sympy.parsing import sympy_parser
 from sympy.parsing.latex import parse_latex
 from sympy.parsing.sympy_parser import parse_expr
-import os
 
-'''
+"""
 This code is adapted from: Dr. GRPO (https://github.com/sail-sg/understand-r1-zero/blob/main/understand_r1_zero/math_grader.py).
-'''
+"""
+
 
 def timeout_ours(timeout_seconds: int = 8):
     if os.name == "posix":
         import signal
 
         def decorator(func):
-
             def handler(signum, frame):
                 raise TimeoutError("Operation timed out!")
 
@@ -62,7 +61,8 @@ def timeout_ours(timeout_seconds: int = 8):
         return decorator
     else:
         raise NotImplementedError(f"Unsupported OS: {os.name}")
-    
+
+
 # Dan Hendrycks' code
 def mathd_normalize_answer(answer: Optional[str]) -> Optional[str]:
     if answer is None:
@@ -306,11 +306,7 @@ def _strip_string(string):
     # replace tfrac and dfrac with frac
     string = string.replace("tfrac", "frac")
     string = string.replace("dfrac", "frac")
-    string = (
-        string.replace("\\neq", "\\ne")
-        .replace("\\leq", "\\le")
-        .replace("\\geq", "\\ge")
-    )
+    string = string.replace("\\neq", "\\ne").replace("\\leq", "\\le").replace("\\geq", "\\ge")
     # print(string)
 
     # remove \left and \right
@@ -551,6 +547,7 @@ def numeric_equal(prediction: float, reference: float):
     # prediction = round(prediction, len(str(reference).split(".")[-1]))
     return isclose(reference, prediction, rel_tol=1e-4)
 
+
 @timeout_ours(timeout_seconds=5)
 def symbolic_equal(a, b):
     def _parse(s):
@@ -632,9 +629,7 @@ def is_latex_equal(given_answer: str, ground_truth: str) -> bool:
     try:
         with timeout(1):
             try:
-                if (len(given_answer) > 128 and repeatness(given_answer)) or (
-                    len(ground_truth) > 128 and repeatness(ground_truth)
-                ):
+                if (len(given_answer) > 128 and repeatness(given_answer)) or (len(ground_truth) > 128 and repeatness(ground_truth)):
                     return False
                 # First conduct normalized string matching.
                 ground_truth_normalized = _normalize(ground_truth)
@@ -647,9 +642,9 @@ def is_latex_equal(given_answer: str, ground_truth: str) -> bool:
                 # Next call math verify.
                 given_answer.replace("\n", "")
                 ground_truth.replace("\n", "")
-                if not "$" in given_answer:
+                if "$" not in given_answer:
                     given_answer = f"${given_answer}$"
-                if not "$" in ground_truth:
+                if "$" not in ground_truth:
                     ground_truth = f"${ground_truth}$"
                 return verify(
                     parse(
@@ -688,9 +683,7 @@ def is_value_equal(given_answer: str, ground_truth: str) -> bool:
 
     str_equal = ground_truth_normalized_mathd == given_answer_normalized_mathd
     try:
-        number_equal = float(ground_truth_normalized_mathd) == float(
-            given_answer_normalized_mathd
-        )
+        number_equal = float(ground_truth_normalized_mathd) == float(given_answer_normalized_mathd)
         return str_equal or number_equal
     except Exception:
         return str_equal
@@ -707,10 +700,7 @@ def _sympy_parse(expr: str):
     py_expr = expr.replace("^", "**")
     return sympy_parser.parse_expr(
         py_expr,
-        transformations=(
-            sympy_parser.standard_transformations
-            + (sympy_parser.implicit_multiplication_application,)
-        ),
+        transformations=(sympy_parser.standard_transformations + (sympy_parser.implicit_multiplication_application,)),
     )
 
 
@@ -827,7 +817,7 @@ def _normalize(expr: str) -> str:
         "yard",
     ]:
         expr = re.sub(f"{unit}(es)?(s)? *(\^[0-9]+)?", "", expr)
-    expr = re.sub(f"\^ *\\\\circ", "", expr)
+    expr = re.sub("\^ *\\\\circ", "", expr)
 
     if len(expr) > 0 and expr[0] == "{" and expr[-1] == "}":
         expr = expr[1:-1]
@@ -882,6 +872,7 @@ def should_allow_eval(expr: str):
 
     return True
 
+
 @timeout_ours(timeout_seconds=5)
 def are_equal_under_sympy(ground_truth_normalized: str, given_normalized: str):
     are_equal = False
@@ -904,12 +895,7 @@ def split_tuple(expr: str):
     expr = _strip_properly_formatted_commas(expr)
     if len(expr) == 0:
         return []
-    if (
-        len(expr) > 2
-        and expr[0] in TUPLE_CHARS
-        and expr[-1] in TUPLE_CHARS
-        and all([ch not in expr[1:-1] for ch in TUPLE_CHARS])
-    ):
+    if len(expr) > 2 and expr[0] in TUPLE_CHARS and expr[-1] in TUPLE_CHARS and all([ch not in expr[1:-1] for ch in TUPLE_CHARS]):
         elems = [elem.strip() for elem in expr[1:-1].split(",")]
     else:
         elems = [expr]
@@ -976,10 +962,7 @@ def grade_answer_sympy(given_answer: str, ground_truth: str) -> bool:
     ground_truth_elems = split_tuple(ground_truth_normalized)
     given_elems = split_tuple(given_normalized)
 
-    if len(ground_truth_elems) > 1 and (
-        ground_truth_normalized[0] != given_normalized[0]
-        or ground_truth_normalized[-1] != given_normalized[-1]
-    ):
+    if len(ground_truth_elems) > 1 and (ground_truth_normalized[0] != given_normalized[0] or ground_truth_normalized[-1] != given_normalized[-1]):
         is_correct = False
     elif len(ground_truth_elems) != len(given_elems):
         is_correct = False
@@ -1019,9 +1002,7 @@ def extract_answer(passage: str) -> str:
 def grade(model_answer: str, gt_answer: str, fast: bool = True):
     if "\\boxed" in gt_answer:
         gt_answer = extract_answer(gt_answer)
-    correct = grade_answer_mathd(model_answer, gt_answer) or grade_answer_sympy(
-        model_answer, gt_answer
-    )
+    correct = grade_answer_mathd(model_answer, gt_answer) or grade_answer_sympy(model_answer, gt_answer)
     if not fast:
         # This mode further uses math_verify to recall originally false positives.
         # Will be a bit slower, and sensitive to bad inputs.
@@ -1036,8 +1017,8 @@ def compute_score(model_response, gt_answer, fast=False):
     model_answer = extract_answer(model_response)
     if model_answer is None:
         return {
-            "score": 0.,
-            "format_score": 0.,
+            "score": 0.0,
+            "format_score": 0.0,
             "acc": False,
             "extracted_gt": gt_answer,
             # "extracted_pred": None,
@@ -1054,18 +1035,17 @@ def compute_score(model_response, gt_answer, fast=False):
             is_correct |= grade(model_answer, gt, fast)
     if is_correct:
         return {
-            "score": 1.,
-            "format_score": 1.,
+            "score": 1.0,
+            "format_score": 1.0,
             "acc": True,
             "extracted_gt": gt_answer,
             # "extracted_pred": None,
         }
     else:
         return {
-            "score": 0.,
-            "format_score": 1.,
+            "score": 0.0,
+            "format_score": 1.0,
             "acc": False,
             "extracted_gt": gt_answer,
             # "extracted_pred": None,
         }
-

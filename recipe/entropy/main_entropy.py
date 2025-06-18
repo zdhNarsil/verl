@@ -20,8 +20,8 @@ import os
 import hydra
 import ray
 
-from verl.trainer.ppo.ray_trainer import RayPPOTrainer
 from verl.trainer.ppo.reward import load_reward_manager
+
 from .entropy_ray_trainer import RayEntropyTrainer
 
 

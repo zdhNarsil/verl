@@ -24,7 +24,7 @@ from pprint import pprint
 import numpy as np
 import torch
 from tqdm import tqdm
-from codetiming import Timer
+
 from verl import DataProto
 from verl.trainer.ppo.metric_utils import (
     compute_data_metrics,
@@ -33,19 +33,13 @@ from verl.trainer.ppo.metric_utils import (
     reduce_metrics,
 )
 from verl.trainer.ppo.ray_trainer import AdvantageEstimator, RayPPOTrainer, _timer, apply_kl_penalty, compute_advantage, compute_response_mask
-from verl.protocol import pad_dataproto_to_divisor, unpad_dataproto
-from verl.trainer.ppo.metric_utils import (
-    compute_data_metrics,
-    compute_throughout_metrics,
-    compute_timing_metrics,
-    process_validation_metrics,
-)
+
 
 class RayEntropyTrainer(RayPPOTrainer):
     """
     Note that this trainer runs on the driver process on a single CPU/GPU node.
     """
-    
+
     def fit(self):
         """
         The training loop of PPO.
@@ -121,7 +115,7 @@ class RayEntropyTrainer(RayPPOTrainer):
                             self.async_rollout_manager.wake_up()
                             gen_batch_output = self.async_rollout_manager.generate_sequences(gen_batch)
                             self.async_rollout_manager.sleep()
-                            
+
                     if self.config.algorithm.adv_estimator == AdvantageEstimator.REMAX:
                         with _timer("gen_max", timing_raw):
                             gen_baseline_batch = deepcopy(gen_batch)
@@ -225,13 +219,12 @@ class RayEntropyTrainer(RayPPOTrainer):
                     # === Updating ===
 
                     batch.batch["response_mask"] = compute_response_mask(batch)
-                    
+
                     # balance the number of valid tokens on each dp rank.
                     # Note that this breaks the order of data inside the batch.
                     # Please take care when you implement group based adv computation such as GRPO and rloo
                     if self.config.trainer.balance_batch:
                         self._balance_batch(batch, metrics=metrics)
-                    
 
                     # compute global_valid tokens
                     batch.meta_info["global_token_num"] = torch.sum(batch.batch["attention_mask"], dim=-1).tolist()

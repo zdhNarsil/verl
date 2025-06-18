@@ -616,14 +616,14 @@ def _is_latex_equal(str1, str2):
             return True
         else:
             raise ValueError
-    except Exception except Exceptionion:  # noqa
+    except Exception:  # noqa
         try:
             norm1, norm2 = normalize_final_answer(str1), normalize_final_answer(str2)
             sym1, val1 = latex_eval(norm1)
             sym2, val2 = latex_eval(norm2)
             if sym1 == sym2 or val1 == val2:
                 return True
-        except Exception except Exceptionion:  # noqa
+        except Exception:  # noqa
             return norm1 == norm2
     return False
 
@@ -675,9 +675,9 @@ def is_latex_equal(given_answer: str, ground_truth: str) -> bool:
                     timeout_seconds=1,
                 )
                 # or symbolic_equal(ground_truth, given_answer)
-            except Exception except Exceptionion:
+            except Exception:
                 return False
-    except Exception TimeoutError:
+    except TimeoutError:
         return False
 
 
@@ -692,7 +692,7 @@ def is_value_equal(given_answer: str, ground_truth: str) -> bool:
             given_answer_normalized_mathd
         )
         return str_equal or number_equal
-    except Exception except Exceptionion:
+    except Exception:
         return str_equal
 
 
@@ -736,7 +736,7 @@ def _is_float(num: str) -> bool:
     try:
         float(num)
         return True
-    except Exception ValueError:
+    except ValueError:
         return False
 
 

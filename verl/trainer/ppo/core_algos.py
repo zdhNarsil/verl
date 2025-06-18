@@ -717,15 +717,15 @@ def compute_policy_loss_kl_cov(
             Mask indicating which tokens to include in the loss, shape (batch_size, response_length).
         loss_agg_mode (str, optional):
             Aggregation mode for `agg_loss`. Defaults to "token-mean".
-        k_ratio (float, optional):
+        kl_cov_ratio (float, optional):
             Ratio for selecting the top-k covariance values. Defaults to 0.0002.
         ppo_kl_coef (float, optional):
             Coefficient for the KL penalty term in the loss. Defaults to 1.
     """
-    k_ratio = config.k_ratio if config.k_ratio is not None else 0.0002
+    kl_cov_ratio = config.kl_cov_ratio if config.kl_cov_ratio is not None else 0.0002
     ppo_kl_coef = config.ppo_kl_coef if config.ppo_kl_coef is not None else 1.0
 
-    assert k_ratio > 0, "k_ratio should be larger than 0."
+    assert kl_cov_ratio > 0, "kl_cov_ratio should be larger than 0."
 
     negative_approx_kl = log_prob - old_log_prob
     abs_kl = negative_approx_kl.abs()
@@ -740,11 +740,11 @@ def compute_policy_loss_kl_cov(
     all_valid_adv = advantages[all_valid].detach().reshape(-1).cpu()
     all_valid_logp = log_prob[all_valid].detach().reshape(-1).cpu()
 
-    k = min(k_ratio, len(all_valid_adv))
+    k = min(kl_cov_ratio, len(all_valid_adv))
 
     if k != 0:
         cov_lst_all = (all_valid_adv - all_valid_adv.mean()) * (all_valid_logp - all_valid_logp.mean())
-        k_percent_nums = max(1, int(len(cov_lst_all) * k_ratio))
+        k_percent_nums = max(1, int(len(cov_lst_all) * kl_cov_ratio))
         large_cov_idxs = torch.topk(cov_lst_all, k_percent_nums, largest=True).indices
         
         if len(large_cov_idxs) != 0:

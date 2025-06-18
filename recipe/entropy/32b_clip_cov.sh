@@ -54,7 +54,7 @@ temperature=1.0
 top_p=1.0
 top_k=-1 # 0 for HF rollout, -1 for vLLM rollout
 ppo_kl_coef=1
-k_ratio=0.02
+kl_cov_ratio=0.02
 
 # Mathematically equivalent
 use_dynamic_bsz=True
@@ -80,7 +80,7 @@ HYDRA_FULL_ERROR=1 python -m recipe.entropy.main_entropy \
     actor_rollout_ref.actor.clip_ratio_high=${clip_ratio_high} \
     actor_rollout_ref.actor.clip_ratio_c=10.0 \
     actor_rollout_ref.actor.loss_mode=${loss_mode} \
-    actor_rollout_ref.actor.k_ratio=${k_ratio} \
+    actor_rollout_ref.actor.kl_cov_ratio=${kl_cov_ratio} \
     actor_rollout_ref.actor.ppo_kl_coef=${ppo_kl_coef} \
     actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=8 \
     actor_rollout_ref.rollout.mode=sync \

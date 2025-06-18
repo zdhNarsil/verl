@@ -32,5 +32,5 @@ actor_rollout_ref:
     clip_cov_ratio: 0.0002 # for clip-cov loss
     clip_cov_lb: 1.0 # for clip-cov loss
     clip_cov_ub: 5.0 # for clip-cov loss
-    k_ratio: 0.0002 # for kl-cov loss
+    kl_cov_ratio: 0.0002 # for kl-cov loss
     ppo_kl_coef: 0.1 # for kl-cov loss

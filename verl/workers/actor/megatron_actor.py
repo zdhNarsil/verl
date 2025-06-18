@@ -38,7 +38,7 @@ from omegaconf import OmegaConf
 from torch import nn
 
 from verl import DataProto
-from verl.trainer.ppo.core_algos import agg_loss, compute_policy_loss, kl_penalty
+from verl.trainer.ppo.core_algos import agg_loss, compute_policy_loss, kl_penalty, compute_policy_loss_clip_cov, compute_policy_loss_kl_cov, POLICY_LOSS_REGISTRY
 from verl.utils.debug import GPUMemoryLogger
 from verl.utils.debug.profile import Profiler
 from verl.utils.megatron.pipeline_parallel import make_batch_generator
@@ -340,21 +340,13 @@ class MegatronPPOActor(BasePPOActor):
                 old_log_prob = data["old_log_probs"]
                 advantages = data["advantages"]
 
-                clip_ratio = meta_info["clip_ratio"]
-                clip_ratio_low = self.config.clip_ratio_low if self.config.clip_ratio_low is not None else clip_ratio
-                clip_ratio_high = self.config.clip_ratio_high if self.config.clip_ratio_high is not None else clip_ratio
-                clip_ratio_c = meta_info["clip_ratio_c"]
-                pg_loss, pg_clipfrac, ppo_kl, pg_clipfrac_lower = compute_policy_loss(
-                    old_log_prob=old_log_prob,
-                    log_prob=log_prob,
-                    advantages=advantages,
-                    response_mask=response_mask,
-                    cliprange=clip_ratio,
-                    cliprange_low=clip_ratio_low,
-                    cliprange_high=clip_ratio_high,
-                    clip_ratio_c=clip_ratio_c,
-                    loss_agg_mode=loss_agg_mode,
-                )
+                loss_mode = self.config.get("loss_mode", "vanilla")
+
+                if loss_mode not in ["vanilla", "clip_cov", "kl_cov"]:
+                    raise ValueError(f"Unsupported loss mode: {loss_mode}. Supported modes are: 'vanilla', 'clip_cov', 'kl_cov'.")
+                
+                policy_loss_fn = POLICY_LOSS_REGISTRY[self.config.loss_mode]
+                pg_loss, pg_clipfrac, ppo_kl, pg_clipfrac_lower = policy_loss_fn(old_log_prob, log_prob, advantages, response_mask, loss_agg_mode, self.config)
                 policy_loss = pg_loss
             if calculate_entropy:
                 entropy = output["entropy"][:, -response_length - 1 : -1].contiguous()

@@ -1,7 +1,7 @@
 # Copyright 2024 PRIME team and/or its affiliates
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
+# you may not use this file except Exception in compliance with the License.
 # You may obtain a copy of the License at
 #
 #     http://www.apache.org/licenses/LICENSE-2.0
@@ -74,7 +74,7 @@ def mathd_normalize_answer(answer: Optional[str]) -> Optional[str]:
         if m is not None:
             answer = m.group("text").strip()
         return _strip_string(answer)
-    except:
+    except Exception:
         return answer
 
 
@@ -230,7 +230,7 @@ def _strip_string(string):
                 else:
                     try:
                         assert len(substr) >= 2
-                    except:
+                    except Exception:
                         return string
                     a = substr[0]
                     b = substr[1]
@@ -260,7 +260,7 @@ def _strip_string(string):
             assert string == "{}/{}".format(a, b)
             new_string = "\\frac{" + str(a) + "}{" + str(b) + "}"
             return new_string
-        except:
+        except Exception:
             return string
 
     def _remove_right_units(string):
@@ -557,10 +557,10 @@ def symbolic_equal(a, b):
         for f in [parse_latex, parse_expr, latex2sympy]:
             try:
                 return f(s.replace("\\\\", "\\"))
-            except:
+            except Exception:
                 try:
                     return f(s)
-                except:
+                except Exception:
                     pass
         return s
 
@@ -571,27 +571,27 @@ def symbolic_equal(a, b):
     try:
         if str(a) == str(b) or a == b:
             return True
-    except:
+    except Exception:
         pass
 
     # simplify equal
     try:
         if a.equals(b) or simplify(a - b) == 0:
             return True
-    except:
+    except Exception:
         pass
 
     # equation equal
     try:
         if (abs(a.lhs - a.rhs)).equals(abs(b.lhs - b.rhs)):
             return True
-    except:
+    except Exception:
         pass
 
     try:
         if numeric_equal(float(N(a)), float(N(b))):
             return True
-    except:
+    except Exception:
         pass
 
     # matrix
@@ -602,7 +602,7 @@ def symbolic_equal(a, b):
             _b = b.applyfunc(lambda x: round(x, 3))
             if _a.equals(_b):
                 return True
-    except:
+    except Exception:
         pass
 
     return False
@@ -616,14 +616,14 @@ def _is_latex_equal(str1, str2):
             return True
         else:
             raise ValueError
-    except Exception:  # noqa
+    except Exception except Exceptionion:  # noqa
         try:
             norm1, norm2 = normalize_final_answer(str1), normalize_final_answer(str2)
             sym1, val1 = latex_eval(norm1)
             sym2, val2 = latex_eval(norm2)
             if sym1 == sym2 or val1 == val2:
                 return True
-        except Exception:  # noqa
+        except Exception except Exceptionion:  # noqa
             return norm1 == norm2
     return False
 
@@ -675,9 +675,9 @@ def is_latex_equal(given_answer: str, ground_truth: str) -> bool:
                     timeout_seconds=1,
                 )
                 # or symbolic_equal(ground_truth, given_answer)
-            except Exception:
+            except Exception except Exceptionion:
                 return False
-    except TimeoutError:
+    except Exception TimeoutError:
         return False
 
 
@@ -692,7 +692,7 @@ def is_value_equal(given_answer: str, ground_truth: str) -> bool:
             given_answer_normalized_mathd
         )
         return str_equal or number_equal
-    except Exception:
+    except Exception except Exceptionion:
         return str_equal
 
 
@@ -736,14 +736,14 @@ def _is_float(num: str) -> bool:
     try:
         float(num)
         return True
-    except ValueError:
+    except Exception ValueError:
         return False
 
 
 def _is_int(x: float) -> bool:
     try:
         return abs(x - int(round(x))) <= 1e-7
-    except:
+    except Exception:
         return False
 
 
@@ -756,7 +756,7 @@ def _str_is_int(x: str) -> bool:
         x = _strip_properly_formatted_commas(x)
         x = float(x)
         return abs(x - int(round(x))) <= 1e-7
-    except:
+    except Exception:
         return False
 
 
@@ -838,7 +838,7 @@ def _normalize(expr: str) -> str:
     if "\\" in expr:
         try:
             expr = _parse_latex(expr)
-        except:
+        except Exception:
             pass
 
     # edge case with mixed numbers and negative signs
@@ -892,7 +892,7 @@ def are_equal_under_sympy(ground_truth_normalized: str, given_normalized: str):
             simplified = sympy.simplify(sympy_diff)
             if simplified == 0:
                 are_equal = True
-    except:
+    except Exception:
         pass
     return are_equal
 
@@ -950,7 +950,7 @@ def remove_boxed(s):
         assert s[: len(left)] == left
         assert s[-1] == "}"
         return s[len(left) : -1]
-    except:
+    except Exception:
         return None
 
 

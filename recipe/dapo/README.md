@@ -17,13 +17,6 @@
 
 ## Quickstart
 
-0. (For reproduction) Checkout to the commit:
-
-```bash
-git fetch origin gm-tyx/puffin/main
-git checkout f7e13f5
-```
-
 1. Prepare the datasets **on the Ray cluster**:
 
 ```bash
@@ -43,11 +36,18 @@ bash recipe/dapo/run_dapo_qwen2.5_32b.sh
 
 ## Reproduction Runs
 
-| Setup                                        | AIME 2024 Acc. | Image                                                                | Training Script                                                  | Training Record                                                                           |
-| -------------------------------------------- | -------------- | -------------------------------------------------------------------- | ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| DAPO                                         | 52%            | `hiyouga/verl:ngc-th2.6.0-cu126-vllm0.8.3-flashinfer0.2.2-cxx11abi0` | [run_dapo_qwen2.5_32b.sh](./run_dapo_qwen2.5_32b.sh)             | [W&B](https://wandb.ai/verl-org/DAPO%20Reproduction%20on%20verl/workspace?nw=wmb4qxfht0n) |
-| DAPO w/o Dynamic Sampling                    | 50%            | `hiyouga/verl:ngc-th2.6.0-cu126-vllm0.8.3-flashinfer0.2.2-cxx11abi0` | [run_dapo_wo_ds_qwen2.5_32b.sh](./run_dapo_wo_ds_qwen2.5_32b.sh) | [W&B](https://wandb.ai/verl-org/DAPO%20Reproduction%20on%20verl/workspace?nw=wmb4qxfht0n) |
-| DAPO w/o Token-level Loss & Dynamic Sampling | 44%            | `hiyouga/verl:ngc-th2.5.1-cu120-vllm0.7.4-hotfix`                    | [run_dapo_early_qwen2.5_32b.sh](./run_dapo_early_qwen2.5_32b.sh) | [W&B](https://wandb.ai/verl-org/DAPO%20Reproduction%20on%20verl/workspace?nw=wmb4qxfht0n) |
+| Setup                                        | AIME 2024 Acc. | Image                                                                | Commit                                                                                       | Training Script                                                                                                                                             | Training Record                                                                           |
+| -------------------------------------------- | -------------- | -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| DAPO                                         | 52%            | `hiyouga/verl:ngc-th2.6.0-cu126-vllm0.8.3-flashinfer0.2.2-cxx11abi0` | [`4f80e4`](https://github.com/volcengine/verl/tree/4f80e465c2ec79ab9c3c30ec74b9745de61d0490) | [run_dapo_qwen2.5_32b.sh](https://github.com/volcengine/verl/blob/4f80e465c2ec79ab9c3c30ec74b9745de61d0490/recipe/dapo/run_dapo_qwen2.5_32b.sh)             | [W&B](https://wandb.ai/verl-org/DAPO%20Reproduction%20on%20verl/workspace?nw=wmb4qxfht0n) |
+| DAPO w/o Dynamic Sampling                    | 50%            | `hiyouga/verl:ngc-th2.6.0-cu126-vllm0.8.3-flashinfer0.2.2-cxx11abi0` | [`4f80e4`](https://github.com/volcengine/verl/tree/4f80e465c2ec79ab9c3c30ec74b9745de61d0490) | [run_dapo_wo_ds_qwen2.5_32b.sh](https://github.com/volcengine/verl/blob/4f80e465c2ec79ab9c3c30ec74b9745de61d0490/recipe/dapo/run_dapo_wo_ds_qwen2.5_32b.sh) | [W&B](https://wandb.ai/verl-org/DAPO%20Reproduction%20on%20verl/workspace?nw=wmb4qxfht0n) |
+| DAPO w/o Token-level Loss & Dynamic Sampling | 44%            | `hiyouga/verl:ngc-th2.5.1-cu120-vllm0.7.4-hotfix`                    | [`4f80e4`](https://github.com/volcengine/verl/tree/4f80e465c2ec79ab9c3c30ec74b9745de61d0490) | [run_dapo_early_qwen2.5_32b.sh](https://github.com/volcengine/verl/blob/4f80e465c2ec79ab9c3c30ec74b9745de61d0490/recipe/dapo/run_dapo_early_qwen2.5_32b.sh) | [W&B](https://wandb.ai/verl-org/DAPO%20Reproduction%20on%20verl/workspace?nw=wmb4qxfht0n) |
+
+> [!NOTE]
+>
+> 1. We set `VLLM_USE_V1=1` via `runtime_env`.
+> 2. Enabling CUDA graph (`enforce_eager=False`) might cause model performance degradation, whose cause is still under investigation.
+
+> [!IMPORTANT] Welcome to submit your reproduction runs and setups!
 
 ## Configuration
 

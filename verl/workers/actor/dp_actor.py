@@ -401,7 +401,7 @@ class DataParallelPPOActor(BasePPOActor):
 
                     loss_mode = self.config.policy_loss.get("loss_mode", "vanilla")
 
-                    if self.config.loss_mode == "vanilla":
+                    if self.config.policy_loss.loss_mode == "vanilla":
                         pg_loss, pg_clipfrac, ppo_kl, pg_clipfrac_lower = compute_policy_loss(
                             old_log_prob=old_log_prob,
                             log_prob=log_prob,

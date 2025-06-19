@@ -15,15 +15,12 @@
 Note that we don't combine the main with ray_trainer as ray_trainer is used by other main.
 """
 
-import os
-
 import hydra
 import ray
 
 from verl.trainer.ppo.reward import load_reward_manager
 
 from .entropy_ray_trainer import RayEntropyTrainer
-from verl.trainer.ppo.reward import get_custom_reward_fn
 
 
 @hydra.main(config_path="config", config_name="entropy_trainer", version_base=None)

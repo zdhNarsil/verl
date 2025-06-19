@@ -38,11 +38,12 @@ def register_policy_loss(name):
 
     return decorator
 
+
 def get_policy_loss_fn(name):
     """Get the policy loss with a given name.
 
     Args:
-        name: `(str)` 
+        name: `(str)`
             The name of the policy loss.
 
     Returns:
@@ -52,6 +53,7 @@ def get_policy_loss_fn(name):
     if loss_name not in POLICY_LOSS_REGISTRY:
         raise ValueError(f"Unsupported loss mode: {name}. Supported modes are: 'vanilla', 'clip_cov', 'kl_cov'.")
     return POLICY_LOSS_REGISTRY[name]
+
 
 ADV_ESTIMATOR_REGISTRY = {}
 

@@ -179,6 +179,7 @@ actor_rollout_ref:
 
     # policy loss config
     policy_loss:
+    
       # Loss function mode: vanilla / clip-cov / kl-cov from https://arxiv.org/abs/2505.
       loss_mode: "vanilla"
       

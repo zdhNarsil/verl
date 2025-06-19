@@ -51,8 +51,8 @@ def get_policy_loss_fn(name):
     """
     loss_name = name
     if loss_name not in POLICY_LOSS_REGISTRY:
-        raise ValueError(f"Unsupported loss mode: {name}. Supported modes are: 'vanilla', 'clip_cov', 'kl_cov'.")
-    return POLICY_LOSS_REGISTRY[name]
+        raise ValueError(f"Unsupported loss mode: {loss_name}. Supported modes are: 'vanilla', 'clip_cov', 'kl_cov'.")
+    return POLICY_LOSS_REGISTRY[loss_name]
 
 
 ADV_ESTIMATOR_REGISTRY = {}

@@ -51,7 +51,7 @@ def get_policy_loss_fn(name):
     """
     loss_name = name
     if loss_name not in POLICY_LOSS_REGISTRY:
-        raise ValueError(f"Unsupported loss mode: {loss_name}. Supported modes are: 'vanilla', 'clip_cov', 'kl_cov'.")
+        raise ValueError(f"Unsupported loss mode: {loss_name}. Supported modes are: {list(POLICY_LOSS_REGISTRY.keys())}")
     return POLICY_LOSS_REGISTRY[loss_name]
 
 

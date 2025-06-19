@@ -39,6 +39,7 @@ def run_ppo(config) -> None:
     runner = TaskRunner.remote()
     ray.get(runner.run.remote(config))
 
+
 def merge_dict(a: dict, b: dict) -> dict:
     """Return a new dict that has `a` updated with `b` (b wins on conflicts).
 

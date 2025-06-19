@@ -53,6 +53,7 @@ def merge_dict(a: dict, b: dict) -> dict:
     """
     return a | b
 
+
 @ray.remote(num_cpus=1)  # please make sure main_task is not scheduled on head
 class TaskRunner:
     def run(self, config):
@@ -133,8 +134,7 @@ class TaskRunner:
             role_worker_mapping[Role.RefPolicy] = ray.remote(ActorRolloutRefWorker)
             mapping[Role.RefPolicy] = global_pool_id
 
-        reward_kwargs = {"max_resp_len": config.data.max_response_length,
-                         "overlong_buffer_cfg": config.reward_model.overlong_buffer}
+        reward_kwargs = {"max_resp_len": config.data.max_response_length, "overlong_buffer_cfg": config.reward_model.overlong_buffer}
         cfg_reward_kwargs = config.reward_model.get("reward_kwargs", {})
         reward_fn = load_reward_manager(config, tokenizer, num_examine=0, **(merge_dict(reward_kwargs, cfg_reward_kwargs)))
         val_reward_fn = load_reward_manager(config, tokenizer, num_examine=1, **reward_kwargs)

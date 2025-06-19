@@ -38,6 +38,20 @@ def register_policy_loss(name):
 
     return decorator
 
+def get_policy_loss_fn(name):
+    """Get the policy loss with a given name.
+
+    Args:
+        name: `(str)` 
+            The name of the policy loss.
+
+    Returns:
+        `(callable)`: The policy loss function.
+    """
+    loss_name = name
+    if loss_name not in POLICY_LOSS_REGISTRY:
+        raise ValueError(f"Unsupported loss mode: {name}. Supported modes are: 'vanilla', 'clip_cov', 'kl_cov'.")
+    return POLICY_LOSS_REGISTRY[name]
 
 ADV_ESTIMATOR_REGISTRY = {}
 
@@ -541,14 +555,16 @@ def agg_loss(loss_mat: torch.Tensor, loss_mask: torch.Tensor, loss_agg_mode: str
     return loss
 
 
-@register_policy_loss("vanilla")
 def compute_policy_loss(
     old_log_prob,
     log_prob,
     advantages,
     response_mask,
+    cliprange=None,
+    cliprange_low=None,
+    cliprange_high=None,
+    clip_ratio_c=3.0,
     loss_agg_mode: str = "token-mean",
-    config=None,
 ):
     """
     Compute the clipped policy objective and related metrics for PPO.
@@ -578,11 +594,6 @@ def compute_policy_loss(
         loss_agg_mode (str, optional):
             Aggregation mode for `agg_loss`. Defaults to "token-mean".
     """
-    cliprange = config.clip_ratio
-    cliprange_low = config.clip_ratio_low if config.clip_ratio_low is not None else cliprange
-    cliprange_high = config.clip_ratio_high if config.clip_ratio_high is not None else cliprange
-    clip_ratio_c = config.get("clip_ratio_c", 3.0)
-
     assert clip_ratio_c > 1.0, "The lower bound of the clip_ratio_c for dual-clip PPO should be greater than 1.0," + f" but get the value: {clip_ratio_c}."
 
     negative_approx_kl = log_prob - old_log_prob
@@ -650,12 +661,12 @@ def compute_policy_loss_clip_cov(
         clip_cov_ub (float, optional):
             Upper bound for clipping covariance. Defaults to 5.0.
     """
-    clip_cov_ratio = config.clip_cov_ratio if config.clip_cov_ratio is not None else 0.0002
+    clip_cov_ratio = config.policy_loss.clip_cov_ratio if config.policy_loss.clip_cov_ratio is not None else 0.0002
     cliprange = config.clip_ratio
     cliprange_low = config.clip_ratio_low if config.clip_ratio_low is not None else cliprange
     cliprange_high = config.clip_ratio_high if config.clip_ratio_high is not None else cliprange
-    clip_cov_ub = config.clip_cov_ub if config.clip_cov_ub is not None else 5.0
-    clip_cov_lb = config.clip_cov_lb if config.clip_cov_lb is not None else 1.0
+    clip_cov_ub = config.policy_loss.clip_cov_ub if config.policy_loss.clip_cov_ub is not None else 5.0
+    clip_cov_lb = config.policy_loss.clip_cov_lb if config.policy_loss.clip_cov_lb is not None else 1.0
 
     assert clip_cov_ratio > 0, "clip_ratio should be larger than 0."
 
@@ -729,8 +740,8 @@ def compute_policy_loss_kl_cov(
         ppo_kl_coef (float, optional):
             Coefficient for the KL penalty term in the loss. Defaults to 1.
     """
-    kl_cov_ratio = config.kl_cov_ratio if config.kl_cov_ratio is not None else 0.0002
-    ppo_kl_coef = config.ppo_kl_coef if config.ppo_kl_coef is not None else 1.0
+    kl_cov_ratio = config.policy_loss.kl_cov_ratio if config.policy_loss.kl_cov_ratio is not None else 0.0002
+    ppo_kl_coef = config.policy_loss.ppo_kl_coef if config.policy_loss.ppo_kl_coef is not None else 1.0
 
     assert kl_cov_ratio > 0, "kl_cov_ratio should be larger than 0."
 

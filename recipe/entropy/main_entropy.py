@@ -39,6 +39,19 @@ def run_ppo(config) -> None:
     runner = TaskRunner.remote()
     ray.get(runner.run.remote(config))
 
+def merge_dict(a: dict, b: dict) -> dict:
+    """Return a new dict that has `a` updated with `b` (b wins on conflicts).
+
+    Example::
+
+      >>> d1 = {"x": 1, "y": 2}
+      >>> d2 = {"y": 20, "z": 3}
+      >>> new_dict = merge_dict(d1, d2)
+      >>> print(new_dict)   # {'x': 1, 'y': 20, 'z': 3}
+      >>> print(d1)         # {"x": 1, "y": 2} (unchanged)
+      >>> print(d2)         # {"y": 20, "z": 3} (unchanged)
+    """
+    return a | b
 
 @ray.remote(num_cpus=1)  # please make sure main_task is not scheduled on head
 class TaskRunner:
@@ -120,8 +133,11 @@ class TaskRunner:
             role_worker_mapping[Role.RefPolicy] = ray.remote(ActorRolloutRefWorker)
             mapping[Role.RefPolicy] = global_pool_id
 
-        reward_fn = load_reward_manager(config, tokenizer, num_examine=0, **config.reward_model.get("reward_kwargs", {}))
-        val_reward_fn = load_reward_manager(config, tokenizer, num_examine=1)
+        reward_kwargs = {"max_resp_len": config.data.max_response_length,
+                         "overlong_buffer_cfg": config.reward_model.overlong_buffer}
+        cfg_reward_kwargs = config.reward_model.get("reward_kwargs", {})
+        reward_fn = load_reward_manager(config, tokenizer, num_examine=0, **(merge_dict(reward_kwargs, cfg_reward_kwargs)))
+        val_reward_fn = load_reward_manager(config, tokenizer, num_examine=1, **reward_kwargs)
         resource_pool_manager = ResourcePoolManager(resource_pool_spec=resource_pool_spec, mapping=mapping)
 
         from verl.utils.dataset.rl_dataset import collate_fn

@@ -97,7 +97,7 @@ class ActorRolloutRefWorker(Workder):
             log_gpu_memory_usage("After delete actor model during init", logger=logger)
 
     @register(dispatch_mode=Dispatch.DP_COMPUTE_PROTO, blocking=False)
-    def generate_sequences(self, *args, **kwargs):
+    def async_generate_sequences(self, *args, **kwargs):
         return super().generate_sequences(*args, **kwargs)
 
     def _get_actor_params(self):

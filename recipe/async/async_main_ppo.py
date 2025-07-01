@@ -28,7 +28,7 @@ from verl.trainer.ppo.reward import load_reward_manager
 from .async_ray_trainer import AsyncRayPPOTrainer
 
 
-@hydra.main(config_path="config", config_name="ppo_trainer", version_base=None)
+@hydra.main(config_path="config", config_name="async_ppo_trainer", version_base=None)
 def main(config):
     run_ppo(config)
 
@@ -42,13 +42,23 @@ def run_ppo(config) -> None:
         # NCCL debug level, VLLM logging level, and allow runtime LoRA updating
         # `num_cpus` specifies the number of CPU cores Ray can use, obtained from the configuration
         ray.init(
-            runtime_env={"env_vars": {"TOKENIZERS_PARALLELISM": "true", "NCCL_DEBUG": "WARN", "VLLM_LOGGING_LEVEL": "WARN", "VLLM_ALLOW_RUNTIME_LORA_UPDATING": "true"}},
+            runtime_env={
+                "env_vars": {
+                    "TOKENIZERS_PARALLELISM": "true",
+                    "NCCL_DEBUG": "WARN",
+                    "VLLM_LOGGING_LEVEL": "WARN",
+                    "VLLM_ALLOW_RUNTIME_LORA_UPDATING": "true",
+                }
+            },
             num_cpus=config.ray_init.num_cpus,
         )
 
     # Create a remote instance of the TaskRunner class, and
     # Execute the `run` method of the TaskRunner instance remotely and wait for it to complete
-    if OmegaConf.select(config.trainer, "profile_steps") is not None and len(OmegaConf.select(config.trainer, "profile_steps")) > 0:
+    if (
+        OmegaConf.select(config.trainer, "profile_steps") is not None
+        and len(OmegaConf.select(config.trainer, "profile_steps")) > 0
+    ):
         nsight_options = OmegaConf.to_container(config.trainer.controller_nsight_options)
         runner = TaskRunner.options(runtime_env={"nsight": nsight_options}).remote()
     else:
@@ -80,7 +90,9 @@ class TaskRunner:
 
         # Download the checkpoint from HDFS to the local machine.
         # `use_shm` determines whether to use shared memory, which could lead to faster model loading if turned on
-        local_path = copy_to_local(config.actor_rollout_ref.model.path, use_shm=config.actor_rollout_ref.model.get("use_shm", False))
+        local_path = copy_to_local(
+            config.actor_rollout_ref.model.path, use_shm=config.actor_rollout_ref.model.get("use_shm", False)
+        )
 
         # Instantiate the tokenizer and processor.
         from verl.utils import hf_processor, hf_tokenizer
@@ -105,7 +117,11 @@ class TaskRunner:
 
             from .async_fsdp_workers import ActorRolloutRefWorker, AsyncActorRolloutRefWorker, CriticWorker
 
-            actor_rollout_cls = AsyncActorRolloutRefWorker if config.actor_rollout_ref.rollout.mode == "async" else ActorRolloutRefWorker
+            actor_rollout_cls = (
+                AsyncActorRolloutRefWorker
+                if config.actor_rollout_ref.rollout.mode == "async"
+                else ActorRolloutRefWorker
+            )
             ray_worker_group_cls = RayWorkerGroup
 
         elif config.actor_rollout_ref.actor.strategy == "megatron":
@@ -114,7 +130,11 @@ class TaskRunner:
             from verl.single_controller.ray.megatron import NVMegatronRayWorkerGroup
             from verl.workers.megatron_workers import ActorRolloutRefWorker, AsyncActorRolloutRefWorker, CriticWorker
 
-            actor_rollout_cls = AsyncActorRolloutRefWorker if config.actor_rollout_ref.rollout.mode == "async" else ActorRolloutRefWorker
+            actor_rollout_cls = (
+                AsyncActorRolloutRefWorker
+                if config.actor_rollout_ref.rollout.mode == "async"
+                else ActorRolloutRefWorker
+            )
             ray_worker_group_cls = NVMegatronRayWorkerGroup
 
         else:
@@ -122,53 +142,37 @@ class TaskRunner:
 
         from .async_ray_trainer import ResourcePoolManager, Role
 
-        if config.actor_rollout_ref.hybrid_engine:
-            global_pool_id = "global_pool"
-            role_worker_mapping = {
-                Role.ActorRollout: ray.remote(actor_rollout_cls),
-                Role.Critic: ray.remote(CriticWorker),
-            }
-            # Define the resource pool specification.
-            # Map roles to the resource pool.
-            resource_pool_spec = {
-                global_pool_id: [config.trainer.n_gpus_per_node] * config.trainer.nnodes,
-            }
-            mapping = {
-                Role.ActorRollout: global_pool_id,
-                Role.Critic: global_pool_id,
-            }
+        role_worker_mapping = {
+            Role.Actor: ray.remote(actor_rollout_cls),
+            Role.Rollout: ray.remote(actor_rollout_cls),
+            Role.Critic: ray.remote(CriticWorker),
+        }
+
+        global_pool_id = "actor_pool"
+        n_gpus = config.trainer.n_gpus_per_node * config.trainer.nnodes
+        n_gpus_rollout = config.actor_rollout_ref.rollout.n_gpus
+        assert n_gpus_rollout is not None
+        assert n_gpus_rollout > 0 and n_gpus_rollout < n_gpus
+        n_gpus_actor = n_gpus - n_gpus_rollout
+        if n_gpus_rollout % config.trainer.n_gpus_per_node == 0:
+            nnodes_rollout = n_gpus_rollout // config.trainer.n_gpus_per_node
+            actor_pool = [config.trainer.n_gpus_per_node] * (config.trainer.nnodes - nnodes_rollout)
+            rollout_pool = [config.trainer.n_gpus_per_node] * nnodes_rollout
+        elif n_gpus_rollout % config.trainer.nnodes == 0:
+            actor_pool = [n_gpus_actor // config.trainer.nnodes] * config.trainer.nnodes
+            rollout_pool = [n_gpus_rollout // config.trainer.nnodes] * config.trainer.nnodes
         else:
-            role_worker_mapping = {
-                Role.Actor: ray.remote(actor_rollout_cls),
-                Role.Rollout: ray.remote(actor_rollout_cls),
-                Role.Critic: ray.remote(CriticWorker),
-            }
-
-            global_pool_id = "actor_pool"
-            n_gpus = config.trainer.n_gpus_per_node * config.trainer.nnodes
-            n_gpus_rollout = config.actor_rollout_ref.rollout.n_gpus
-            assert n_gpus_rollout is not None
-            assert n_gpus_rollout > 0 and n_gpus_rollout < n_gpus
-            n_gpus_actor = n_gpus - n_gpus_rollout
-            actor_pool = [n_gpus_actor]
-            for _ in range(config.trainer.nnodes - 1):
-                w = actor_pool[-1]
-                new_w = min(config.trainer.n_gpus_per_node, w)
-                next_w = w - new_w
-                actor_pool[-1] = new_w
-                actor_pool.append(next_w)
-
-            rollout_pool = [config.trainer.n_gpus_per_node - x for x in actor_pool]
-            resource_pool_spec = {
-                "actor_pool": actor_pool,
-                "rollout_pool": rollout_pool,
-            }
-            mapping = {
-                Role.Actor: "actor_pool",
-                Role.Rollout: "rollout_pool",
-                Role.Critic: "actor_pool",
-            }
-
+            raise ValueError("rollout.n_gpus should be divisible by n_gpus_per_node or nnodes")
+        resource_pool_spec = {
+            "actor_pool": actor_pool,
+            "rollout_pool": rollout_pool,
+        }
+        mapping = {
+            Role.Actor: "actor_pool",
+            Role.Rollout: "rollout_pool",
+            Role.Critic: "actor_pool",
+        }
+        print(f"resource_pool_spec: {resource_pool_spec}")
         # We should adopt a multi-source reward function here:
         # - for rule-based rm, we directly call a reward score
         # - for model-based rm, we call a model
@@ -191,8 +195,12 @@ class TaskRunner:
             mapping[Role.RefPolicy] = global_pool_id
 
         # Load the reward manager for training and validation.
-        reward_fn = load_reward_manager(config, tokenizer, num_examine=0, **config.reward_model.get("reward_kwargs", {}))
-        val_reward_fn = load_reward_manager(config, tokenizer, num_examine=1, **config.reward_model.get("reward_kwargs", {}))
+        reward_fn = load_reward_manager(
+            config, tokenizer, num_examine=0, **config.reward_model.get("reward_kwargs", {})
+        )
+        val_reward_fn = load_reward_manager(
+            config, tokenizer, num_examine=1, **config.reward_model.get("reward_kwargs", {})
+        )
         resource_pool_manager = ResourcePoolManager(resource_pool_spec=resource_pool_spec, mapping=mapping)
 
         from verl.utils.dataset.rl_dataset import collate_fn

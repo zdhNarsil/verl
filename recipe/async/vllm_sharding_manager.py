@@ -20,6 +20,7 @@ class VLLMShardingManager(BaseShardingManager):
     def __init__(self, inference_engine, device_mesh: DeviceMesh):
         self.device_mesh = device_mesh
         self.inference_engine = inference_engine
+        inference_engine.wake_up()
         assert device_mesh is not None
         assert inference_engine is not None
         self.tp_size = self.device_mesh["infer_tp"].size()

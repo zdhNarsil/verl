@@ -115,7 +115,12 @@ class TaskRunner:
             assert config.critic.strategy in ["fsdp", "fsdp2"]
             from verl.single_controller.ray import RayWorkerGroup
 
-            from .async_fsdp_workers import ActorRolloutRefWorker, AsyncActorRolloutRefWorker, CriticWorker
+            from .async_fsdp_workers import (
+                ActorRolloutRefWorker,
+                AsyncActorRolloutRefWorker,
+                CriticWorker,
+                RolloutWorker,
+            )
 
             actor_rollout_cls = (
                 AsyncActorRolloutRefWorker
@@ -144,7 +149,7 @@ class TaskRunner:
 
         role_worker_mapping = {
             Role.Actor: ray.remote(actor_rollout_cls),
-            Role.Rollout: ray.remote(actor_rollout_cls),
+            Role.Rollout: ray.remote(RolloutWorker),
             Role.Critic: ray.remote(CriticWorker),
         }
 

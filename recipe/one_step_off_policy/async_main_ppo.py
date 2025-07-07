@@ -1,5 +1,4 @@
 # Copyright 2024 Bytedance Ltd. and/or its affiliates
-# Copyright 2025 Meituan Ltd. and/or its affiliates
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -43,6 +42,8 @@ def run_ppo(config) -> None:
         # NCCL debug level, VLLM logging level, and allow runtime LoRA updating
         # `num_cpus` specifies the number of CPU cores Ray can use, obtained from the configuration
         ray.init(
+            dashboard_host="0.0.0.0",
+            dashboard_port=8412,
             runtime_env={
                 "env_vars": {
                     "TOKENIZERS_PARALLELISM": "true",
@@ -131,10 +132,15 @@ class TaskRunner:
             ray_worker_group_cls = RayWorkerGroup
 
         elif config.actor_rollout_ref.actor.strategy == "megatron":
-            raise NotImplementedError
             assert config.actor_rollout_ref.actor.strategy == config.critic.strategy
             from verl.single_controller.ray.megatron import NVMegatronRayWorkerGroup
-            from verl.workers.megatron_workers import ActorRolloutRefWorker, AsyncActorRolloutRefWorker, CriticWorker
+
+            from .async_megatron_workers import (
+                ActorRolloutRefWorker,
+                AsyncActorRolloutRefWorker,
+                CriticWorker,
+                RolloutWorker,
+            )
 
             actor_rollout_cls = (
                 AsyncActorRolloutRefWorker

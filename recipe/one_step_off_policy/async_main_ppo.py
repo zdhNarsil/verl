@@ -113,8 +113,8 @@ class TaskRunner:
                     raise NotImplementedError("PPO LoRA is not supported before vllm 0.7.3")
 
         # Define worker classes based on the actor strategy.
-        if config.actor_rollout_ref.actor.strategy in ["fsdp", "fsdp2"]:
-            assert config.critic.strategy in ["fsdp", "fsdp2"]
+        if config.actor_rollout_ref.actor.strategy in ["fsdp2"]:
+            assert config.critic.strategy in ["fsdp2"]
             from verl.single_controller.ray import RayWorkerGroup
 
             from .async_fsdp_workers import (
@@ -192,7 +192,7 @@ class TaskRunner:
         # finally, we combine all the rewards together
         # The reward type depends on the tag of the data
         if config.reward_model.enable:
-            if config.reward_model.strategy in ["fsdp", "fsdp2"]:
+            if config.reward_model.strategy in ["fsdp2"]:
                 from verl.workers.fsdp_workers import RewardModelWorker
             elif config.reward_model.strategy == "megatron":
                 from verl.workers.megatron_workers import RewardModelWorker

@@ -362,8 +362,6 @@ class AsyncRayPPOTrainer(RayPPOTrainer):
         if not self.hybrid_engine:
             self.actor_wg.sync_rollout_weights()
             ray.get(self.rollout_wg.sync_rollout_weights())
-            # param_ref = self.actor_wg.sync_rollout_weights_v2(None)
-            # self.rollout_wg.sync_rollout_weights_v2(param_ref)
 
     def fit(self):
         """

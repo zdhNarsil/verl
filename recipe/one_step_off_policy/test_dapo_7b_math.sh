@@ -2,7 +2,7 @@
 set -xeuo pipefail
 
 project_name='DAPO'
-exp_name='DAPO-Qwen2.5-1.5b-MATH-one-step-off-test'
+exp_name='DAPO-Qwen2.5-7b-MATH-0527a1-one-step-off'
 
 adv_estimator=grpo
 
@@ -15,14 +15,14 @@ clip_ratio_low=0.2
 clip_ratio_high=0.28
 
 max_prompt_length=$((1024 * 2))
-max_response_length=$((1024 * 8))
+max_response_length=$((1024 * 20))
 enable_overlong_buffer=True
 overlong_buffer_len=$((1024 * 4))
 overlong_penalty_factor=1.0
 
 loss_agg_mode="token-mean"
 
-train_prompt_bsz=512
+train_prompt_bsz=516
 n_resp_per_prompt=16
 train_prompt_mini_bsz=32
 
@@ -30,22 +30,12 @@ train_prompt_mini_bsz=32
 # RAY_ADDRESS=${RAY_ADDRESS:-"http://localhost:8265"}
 # WORKING_DIR=${WORKING_DIR:-"${PWD}"}
 # RUNTIME_ENV=${RUNTIME_ENV:-"${WORKING_DIR}/verl/trainer/runtime_env.yaml"}
-# NNODES=${NNODES:-8}
-# NGPUS_PER_NODE=${NGPUS_PER_NODE:-8}
-# # Paths
-# RAY_DATA_HOME=${RAY_DATA_HOME:-"${HOME}/verl"}
-# # very important! please modify the max_position_embeddings in config.json to 32768 after downloading from huggingface
-# MODEL_PATH=${MODEL_PATH:-"${RAY_DATA_HOME}/models/Qwen2.5-Math-7B"}
-# CKPTS_DIR=${CKPTS_DIR:-"${RAY_DATA_HOME}/ckpts/${project_name}/${exp_name}"}
-# TRAIN_FILE=${TRAIN_FILE:-"${RAY_DATA_HOME}/data/dapo-math-17k.parquet"}
-# TEST_FILE=${TEST_FILE:-"${RAY_DATA_HOME}/data/aime-2024.parquet"}
-
-
-NNODES=1
-NGPUS_PER_NODE=8
+NNODES=${NNODES:-2}
+NGPUS_PER_NODE=${NGPUS_PER_NODE:-8}
 # Paths
+RAY_DATA_HOME=${RAY_DATA_HOME:-"${HOME}/verl"}
 # very important! please modify the max_position_embeddings in config.json to 32768 after downloading from huggingface
-MODEL_PATH=/mnt/dolphinfs/hdd_pool/docker/share/huangmincong/huggingface.co/Qwen/Qwen2.5-Math-1.5B
+MODEL_PATH=/mnt/dolphinfs/hdd_pool/docker/share/huangmincong/huggingface.co/Qwen/Qwen2.5-Math-7B
 CKPTS_DIR=./ckpts/${project_name}/${exp_name}
 TRAIN_FILE=/mnt/dolphinfs/hdd_pool/docker/share/huangmincong/huggingface.co/datasets/BytedTsinghua-SIA/DAPO-Math-17k/data/dapo-math-17k.parquet
 TEST_FILE=/mnt/dolphinfs/hdd_pool/docker/share/huangmincong/huggingface.co/datasets/BytedTsinghua-SIA/AIME-2024/data/aime-2024.parquet
@@ -58,17 +48,18 @@ top_k=-1 # 0 for HF rollout, -1 for vLLM rollout
 val_top_p=0.7
 
 # Performance Related Parameter
-sp_size=2
+sp_size=4
 use_dynamic_bsz=True
 actor_ppo_max_token_len=$(((max_prompt_length + max_response_length) * 2))
 infer_ppo_max_token_len=$(((max_prompt_length + max_response_length) * 3))
-offload=False
+ref_offload=True
+actor_offload=False
 gen_tp=2
 fsdp_size=2
 
 # reference run wandb: https://wandb.ai/verl-org/DAPO%20Reproduction%20on%20verl/runs/ow47vvon?nw=nwusertongyuxuan361
 
-python3 -m recipe.async.async_main_ppo \
+python3 -m recipe.one_step_off_policy.async_main_ppo \
     data.train_files="${TRAIN_FILE}" \
     data.val_files="${TEST_FILE}" \
     data.prompt_key=prompt \
@@ -101,8 +92,8 @@ python3 -m recipe.async.async_main_ppo \
     actor_rollout_ref.actor.optim.lr_warmup_steps=10 \
     actor_rollout_ref.actor.optim.weight_decay=0.1 \
     actor_rollout_ref.actor.ppo_mini_batch_size=${train_prompt_mini_bsz} \
-    actor_rollout_ref.actor.fsdp_config.param_offload=${offload} \
-    actor_rollout_ref.actor.fsdp_config.optimizer_offload=${offload} \
+    actor_rollout_ref.actor.fsdp_config.param_offload=${actor_offload} \
+    actor_rollout_ref.actor.fsdp_config.optimizer_offload=${actor_offload} \
     actor_rollout_ref.actor.entropy_coeff=0 \
     actor_rollout_ref.actor.grad_clip=1.0 \
     actor_rollout_ref.actor.loss_agg_mode=${loss_agg_mode} \
@@ -120,7 +111,7 @@ python3 -m recipe.async.async_main_ppo \
     actor_rollout_ref.rollout.val_kwargs.top_k=${top_k} \
     actor_rollout_ref.rollout.val_kwargs.do_sample=True \
     actor_rollout_ref.rollout.val_kwargs.n=1 \
-    actor_rollout_ref.ref.fsdp_config.param_offload=True \
+    actor_rollout_ref.ref.fsdp_config.param_offload=${ref_offload} \
     actor_rollout_ref.ref.ulysses_sequence_parallel_size=${sp_size} \
     actor_rollout_ref.actor.fsdp_config.fsdp_size=${fsdp_size} \
     reward_model.reward_manager=dapo \

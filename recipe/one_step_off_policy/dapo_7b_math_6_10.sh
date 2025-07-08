@@ -2,7 +2,7 @@
 set -xeuo pipefail
 
 project_name='DAPO'
-exp_name='DAPO-Qwen2.5-7b-MATH-0527a1-one-step-off'
+exp_name='DAPO-Qwen2.5-7b-MATH-0527a1-one-step-off-6-10'
 
 adv_estimator=grpo
 
@@ -22,7 +22,7 @@ overlong_penalty_factor=1.0
 
 loss_agg_mode="token-mean"
 
-train_prompt_bsz=516
+train_prompt_bsz=510
 n_resp_per_prompt=16
 train_prompt_mini_bsz=32
 
@@ -35,10 +35,10 @@ NGPUS_PER_NODE=${NGPUS_PER_NODE:-8}
 # Paths
 RAY_DATA_HOME=${RAY_DATA_HOME:-"${HOME}/verl"}
 # very important! please modify the max_position_embeddings in config.json to 32768 after downloading from huggingface
-MODEL_PATH=/mnt/dolphinfs/hdd_pool/docker/share/huangmincong/huggingface.co/Qwen/Qwen2.5-Math-7B
-CKPTS_DIR=./ckpts/${project_name}/${exp_name}
-TRAIN_FILE=/mnt/dolphinfs/hdd_pool/docker/share/huangmincong/huggingface.co/datasets/BytedTsinghua-SIA/DAPO-Math-17k/data/dapo-math-17k.parquet
-TEST_FILE=/mnt/dolphinfs/hdd_pool/docker/share/huangmincong/huggingface.co/datasets/BytedTsinghua-SIA/AIME-2024/data/aime-2024.parquet
+MODEL_PATH=${MODEL_PATH:-"${RAY_DATA_HOME}/models/Qwen2.5-Math-7B"}
+CKPTS_DIR=${CKPTS_DIR:-"${RAY_DATA_HOME}/ckpts/${project_name}/${exp_name}"}
+TRAIN_FILE=${TRAIN_FILE:-"${RAY_DATA_HOME}/data/dapo-math-17k.parquet"}
+TEST_FILE=${TEST_FILE:-"${RAY_DATA_HOME}/data/aime-2024.parquet"}
 
 
 # Algorithm
@@ -105,7 +105,7 @@ python3 -m recipe.one_step_off_policy.async_main_ppo \
     actor_rollout_ref.rollout.temperature=${temperature} \
     actor_rollout_ref.rollout.top_p=${top_p} \
     actor_rollout_ref.rollout.top_k=${top_k} \
-    actor_rollout_ref.rollout.n_gpus=4 \
+    actor_rollout_ref.rollout.n_gpus=6 \
     actor_rollout_ref.rollout.val_kwargs.temperature=${temperature} \
     actor_rollout_ref.rollout.val_kwargs.top_p=${val_top_p} \
     actor_rollout_ref.rollout.val_kwargs.top_k=${top_k} \

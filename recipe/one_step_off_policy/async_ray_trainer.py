@@ -49,6 +49,31 @@ from verl.utils.metric import (
 from verl.utils.tracking import ValidationGenerationsLogger
 
 
+class GenerationBatchFuture:
+    """
+    Wrapper class for encapsulating batch generation results
+    """
+    def __init__(self, batch, gen_batch_output):
+        self.batch = batch  # Input batch data 
+        self.gen_batch_output = gen_batch_output  # Generated sequences from the main model (DataProtoFuture)
+
+    def get(self):
+        """
+        Get the actual results by calling get() method on gen_batch_output 
+        
+        Returns:
+            tuple: (batch, gen_batch_result)
+                - batch: Original input batch data
+                - gen_batch_result: Result from gen_batch_output.get() or gen_batch_output itself
+        """
+        # Call get() method on gen_batch_output if available
+        if hasattr(self.gen_batch_output, 'get'):
+            gen_batch_result = self.gen_batch_output.get()
+        else:
+            gen_batch_result = self.gen_batch_output
+        
+        return self.batch, gen_batch_result
+    
 class AsyncRayPPOTrainer(RayPPOTrainer):
     # TODO: support each role have individual ray_worker_group_cls,
     # i.e., support different backend of different role
@@ -121,7 +146,7 @@ class AsyncRayPPOTrainer(RayPPOTrainer):
             AdvantageEstimator.GRPO,
             AdvantageEstimator.GRPO_PASSK,
             AdvantageEstimator.REINFORCE_PLUS_PLUS,
-            AdvantageEstimator.REMAX,
+            # AdvantageEstimator.REMAX, # TODO:REMAX advantage estimator is not yet supported in one_step_off_policy
             AdvantageEstimator.RLOO,
             AdvantageEstimator.OPO,
             AdvantageEstimator.REINFORCE_PLUS_PLUS_BASELINE,
@@ -404,20 +429,14 @@ class AsyncRayPPOTrainer(RayPPOTrainer):
         last_val_metrics = None
 
         for epoch in range(self.config.trainer.total_epochs):
-            batch_data = None
+            batch_data_future = None
             iterator = iter(self.train_dataloader)
 
-            def gen_next_batch(iterator, weight_sync_func, weight_sync_ctx=None):
-                nonlocal batch_data
-                ret = (None, None, None)
-                # waiting for the output of previous rollout step
-                if batch_data is not None:
-                    ret = (batch_data[0], batch_data[1].get(), batch_data[2])
-
+            def asys_gen_next_batch(iterator):
                 try:
                     batch_dict = next(iterator)
                 except StopIteration:
-                    return ret
+                    return None
 
                 batch = DataProto.from_single_dict(batch_dict)
                 # pop those keys for generation
@@ -436,22 +455,23 @@ class AsyncRayPPOTrainer(RayPPOTrainer):
                     non_tensor_batch_keys=non_tensor_batch_keys_to_pop,
                 )
 
-                if weight_sync_ctx is None:
-                    from contextlib import nullcontext
-
-                    weight_sync_ctx = nullcontext()
-
-                with weight_sync_ctx:
-                    weight_sync_func()
+                # sync weights from actor to rollout
+                self.sync_rollout_weights()
 
                 # async generation
                 gen_batch_output = self.rollout_wg.async_generate_sequences(gen_batch)
-                batch_data = (batch, gen_batch_output, gen_batch)
-                return ret
 
-            gen_next_batch(iterator, self.sync_rollout_weights)
-            while batch_data is not None:
-                do_profile = self.global_steps in self.config.trainer.profile_steps if self.config.trainer.profile_steps is not None else False
+                return GenerationBatchFuture(batch, gen_batch_output)
+            
+            # first call asys_gen_next_batch before train
+            batch_data_future = asys_gen_next_batch(iterator)
+
+            while batch_data_future is not None:
+                do_profile = (
+                    self.global_steps in self.config.trainer.profile_steps
+                    if self.config.trainer.profile_steps is not None
+                    else False
+                )
                 if do_profile:
                     self.actor_wg.start_profile()
                     if not self.hybrid_engine:
@@ -468,27 +488,15 @@ class AsyncRayPPOTrainer(RayPPOTrainer):
                 is_last_step = self.global_steps >= self.total_training_steps
 
                 with marked_timer("step", timing_raw):
-                    # wait for the previous batch and generate next batch
-                    with marked_timer("gen", timing_raw, color="red"):
-                        batch, gen_batch_output, gen_batch = gen_next_batch(iterator, self.sync_rollout_weights, marked_timer("sync_rollout_weights", timing_raw))
+                    # wait for the previous batch 
+                    with marked_timer("wait_prev_gen", timing_raw, color="red"):
+                        batch, gen_batch_output = batch_data_future.get()
                         timing_raw.update(gen_batch_output.meta_info["timing"])
                         gen_batch_output.meta_info.pop("timing", None)
-
-                    if self.config.algorithm.adv_estimator == AdvantageEstimator.REMAX:
-                        with marked_timer("gen_max", timing_raw, color="purple"):
-                            gen_baseline_batch = deepcopy(gen_batch)
-                            gen_baseline_batch.meta_info["do_sample"] = False
-                            gen_baseline_output = self.rollout_wg.generate_sequences(gen_baseline_batch)
-
-                            batch = batch.union(gen_baseline_output)
-                            reward_baseline_tensor = self.reward_fn(batch)
-                            reward_baseline_tensor = reward_baseline_tensor.sum(dim=-1)
-
-                            batch.pop(batch_keys=list(gen_baseline_output.batch.keys()))
-
-                            batch.batch["reward_baselines"] = reward_baseline_tensor
-
-                            del gen_baseline_batch, gen_baseline_output
+                        
+                    # asys next generation (with syns weights from actor to rollout)
+                    with marked_timer("sync_rollout_weights", timing_raw, color="purple"):
+                        batch_data_future = asys_gen_next_batch(iterator)
 
                     batch.non_tensor_batch["uid"] = np.array([str(uuid.uuid4()) for _ in range(len(batch.batch))], dtype=object)
                     # repeat to align with repeated responses in rollout

@@ -55,7 +55,7 @@ ref_offload=True
 actor_offload=False
 gen_tp=2
 train_tp=2
-train_pp=2
+train_pp=1
 
 # TODO: support dynamic_bsz for megatron
 # actor_rollout_ref.actor.use_dynamic_bsz=${use_dynamic_bsz} \
@@ -127,7 +127,7 @@ python3 -m recipe.one_step_off_policy.async_main_ppo \
     trainer.logger=['console','tensorboard'] \
     trainer.project_name="${project_name}" \
     trainer.experiment_name="${exp_name}" \
-    trainer.n_gpus_per_node=16 \
+    trainer.n_gpus_per_node=8 \
     trainer.nnodes="${NNODES}" \
     trainer.val_before_train=False \
     trainer.test_freq=10 \

@@ -31,7 +31,7 @@ train_prompt_mini_bsz=32
 # RAY_ADDRESS=${RAY_ADDRESS:-"http://localhost:8265"}
 # WORKING_DIR=${WORKING_DIR:-"${PWD}"}
 # RUNTIME_ENV=${RUNTIME_ENV:-"${WORKING_DIR}/verl/trainer/runtime_env.yaml"}
-NNODES=${NNODES:-1}
+NNODES=${NNODES:-2}
 NGPUS_PER_NODE=${NGPUS_PER_NODE:-8}
 # Paths
 RAY_DATA_HOME=${RAY_DATA_HOME:-"${HOME}/verl"}
@@ -65,7 +65,7 @@ train_pp=2
 # actor_rollout_ref.ref.log_prob_max_token_len_per_gpu=${infer_ppo_max_token_len} \
 # actor_rollout_ref.rollout.log_prob_max_token_len_per_gpu=${infer_ppo_max_token_len} \
 
-python3 -m recipe.async.async_main_ppo \
+python3 -m recipe.one_step_off_policy.async_main_ppo \
     --config-path=config \
     --config-name='async_ppo_megatron_trainer.yaml' \
     data.train_files="${TRAIN_FILE}" \
@@ -84,6 +84,7 @@ python3 -m recipe.async.async_main_ppo \
     actor_rollout_ref.actor.clip_ratio_low=${clip_ratio_low} \
     actor_rollout_ref.actor.clip_ratio_high=${clip_ratio_high} \
     actor_rollout_ref.actor.clip_ratio_c=10.0 \
+    actor_rollout_ref.hybrid_engine=False \
     actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=2 \
     actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=4 \
     actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=4 \

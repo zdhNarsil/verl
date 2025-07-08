@@ -15,7 +15,7 @@ clip_ratio_low=0.2
 clip_ratio_high=0.28
 
 max_prompt_length=$((1024 * 2))
-max_response_length=$((1024 * 8))
+max_response_length=$((1024 * 20))
 enable_overlong_buffer=True
 overlong_buffer_len=$((1024 * 4))
 overlong_penalty_factor=1.0
@@ -36,7 +36,7 @@ NGPUS_PER_NODE=${NGPUS_PER_NODE:-8}
 # Paths
 RAY_DATA_HOME=${RAY_DATA_HOME:-"${HOME}/verl"}
 # very important! please modify the max_position_embeddings in config.json to 32768 after downloading from huggingface
-MODEL_PATH=/mnt/dolphinfs/hdd_pool/docker/share/houzhenggang/modelscope/hub/models/Qwen-mcore/Qwen2___5-Math-7B
+MODEL_PATH=/mnt/dolphinfs/hdd_pool/docker/share/houzhenggang/modelscope/hub/models/Qwen/Qwen2___5-Math-7B
 CKPTS_DIR=./ckpts/${project_name}/${exp_name}
 TRAIN_FILE=/mnt/dolphinfs/hdd_pool/docker/share/huangmincong/huggingface.co/datasets/BytedTsinghua-SIA/DAPO-Math-17k/data/dapo-math-17k.parquet
 TEST_FILE=/mnt/dolphinfs/hdd_pool/docker/share/huangmincong/huggingface.co/datasets/BytedTsinghua-SIA/AIME-2024/data/aime-2024.parquet
@@ -85,6 +85,7 @@ python3 -m recipe.one_step_off_policy.async_main_ppo \
     actor_rollout_ref.actor.clip_ratio_high=${clip_ratio_high} \
     actor_rollout_ref.actor.clip_ratio_c=10.0 \
     actor_rollout_ref.hybrid_engine=False \
+    +actor_rollout_ref.model.override_config.max_position_embeddings=32768 \
     actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=2 \
     actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=4 \
     actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=4 \
@@ -129,10 +130,11 @@ python3 -m recipe.one_step_off_policy.async_main_ppo \
     trainer.experiment_name="${exp_name}" \
     trainer.n_gpus_per_node=8 \
     trainer.nnodes="${NNODES}" \
-    trainer.val_before_train=False \
+    trainer.val_before_train=True \
     trainer.test_freq=10 \
-    trainer.save_freq=10 \
+    trainer.save_freq=-1 \
     trainer.total_epochs=10 \
+    trainer.total_training_steps=100 \
     trainer.default_local_dir="${CKPTS_DIR}" \
     trainer.resume_mode=auto \
     trainer.log_val_generations=10

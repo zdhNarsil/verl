@@ -1,6 +1,7 @@
 # Copyright 2024 Bytedance Ltd. and/or its affiliates
 # Copyright 2023-2024 SGLang Team
 # Copyright 2025 ModelBest Inc. and/or its affiliates
+# Copyright 2025 Meituan Ltd. and/or its affiliates
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,7 +20,6 @@ This trainer supports model-agonistic model initialization with huggingface
 """
 
 import uuid
-from copy import deepcopy
 from pprint import pprint
 from typing import Optional
 
@@ -40,8 +40,15 @@ from verl.trainer.ppo.metric_utils import (
     compute_throughout_metrics,
     compute_timing_metrics,
 )
-from verl.trainer.ppo.ray_trainer import RayPPOTrainer, ResourcePoolManager, Role, WorkerType, apply_kl_penalty, \
-    compute_advantage, compute_response_mask
+from verl.trainer.ppo.ray_trainer import (
+    RayPPOTrainer,
+    ResourcePoolManager,
+    Role,
+    WorkerType,
+    apply_kl_penalty,
+    compute_advantage,
+    compute_response_mask,
+)
 from verl.trainer.ppo.reward import compute_reward, compute_reward_async
 from verl.utils.debug import marked_timer
 from verl.utils.metric import (
@@ -67,15 +74,15 @@ class GenerationBatchFuture:
 
     def get(self):
         """
-        Get the actual results by calling get() method on gen_batch_output 
-        
+        Get the actual results by calling get() method on gen_batch_output
+
         Returns:
             tuple: (batch, gen_batch_result)
                 - batch: Original input batch data
                 - gen_batch_result: Result from gen_batch_output.get() or gen_batch_output itself
         """
         # Call get() method on gen_batch_output if available
-        if hasattr(self.gen_batch_output, 'get'):
+        if hasattr(self.gen_batch_output, "get"):
             gen_batch_result = self.gen_batch_output.get()
         else:
             gen_batch_result = self.gen_batch_output
@@ -87,20 +94,20 @@ class AsyncRayPPOTrainer(RayPPOTrainer):
     # TODO: support each role have individual ray_worker_group_cls,
     # i.e., support different backend of different role
     def __init__(
-            self,
-            config,
-            tokenizer,
-            role_worker_mapping: dict[Role, WorkerType],
-            resource_pool_manager: ResourcePoolManager,
-            ray_worker_group_cls: RayWorkerGroup = RayWorkerGroup,
-            processor=None,
-            reward_fn=None,
-            val_reward_fn=None,
-            train_dataset: Optional[Dataset] = None,
-            val_dataset: Optional[Dataset] = None,
-            collate_fn=None,
-            train_sampler: Optional[Sampler] = None,
-            device_name="cuda",
+        self,
+        config,
+        tokenizer,
+        role_worker_mapping: dict[Role, WorkerType],
+        resource_pool_manager: ResourcePoolManager,
+        ray_worker_group_cls: RayWorkerGroup = RayWorkerGroup,
+        processor=None,
+        reward_fn=None,
+        val_reward_fn=None,
+        train_dataset: Optional[Dataset] = None,
+        val_dataset: Optional[Dataset] = None,
+        collate_fn=None,
+        train_sampler: Optional[Sampler] = None,
+        device_name="cuda",
     ):
         """
         Initialize distributed PPO trainer with Ray backend.
@@ -171,22 +178,34 @@ class AsyncRayPPOTrainer(RayPPOTrainer):
         config = self.config
         # number of GPUs total
         n_gpus = config.trainer.n_gpus_per_node * config.trainer.nnodes
-        n_gpus_actor = n_gpus if config.actor_rollout_ref.hybrid_engine else n_gpus - config.actor_rollout_ref.rollout.n_gpus
+        n_gpus_actor = (
+            n_gpus if config.actor_rollout_ref.hybrid_engine else n_gpus - config.actor_rollout_ref.rollout.n_gpus
+        )
         if config.actor_rollout_ref.actor.strategy == "megatron":
-            model_parallel_size = config.actor_rollout_ref.actor.megatron.tensor_model_parallel_size * config.actor_rollout_ref.actor.megatron.pipeline_model_parallel_size
-            assert n_gpus_actor % (
-                    model_parallel_size * config.actor_rollout_ref.actor.megatron.context_parallel_size) == 0, (
-                f"n_gpus_actor ({n_gpus_actor}) must be divisible by model_parallel_size ({model_parallel_size}) times context_parallel_size ({config.actor_rollout_ref.actor.megatron.context_parallel_size})"
+            model_parallel_size = (
+                config.actor_rollout_ref.actor.megatron.tensor_model_parallel_size
+                * config.actor_rollout_ref.actor.megatron.pipeline_model_parallel_size
+            )
+            assert (
+                n_gpus_actor % (model_parallel_size * config.actor_rollout_ref.actor.megatron.context_parallel_size)
+                == 0
+            ), (
+                f"n_gpus_actor ({n_gpus_actor}) must be divisible by model_parallel_size ({model_parallel_size}) "
+                f"times context_parallel_size ({config.actor_rollout_ref.actor.megatron.context_parallel_size}) ."
             )
             megatron_dp = n_gpus_actor // (
-                    model_parallel_size * config.actor_rollout_ref.actor.megatron.context_parallel_size)
+                model_parallel_size * config.actor_rollout_ref.actor.megatron.context_parallel_size
+            )
             minimal_bsz = megatron_dp * config.actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu
         else:
             minimal_bsz = n_gpus_actor
 
         # 1. Check total batch size for data correctness
         real_train_batch_size = config.data.train_batch_size * config.actor_rollout_ref.rollout.n
-        assert real_train_batch_size % minimal_bsz == 0, f"real_train_batch_size ({real_train_batch_size}) must be divisible by minimal possible batch size ({minimal_bsz})"
+        assert real_train_batch_size % minimal_bsz == 0, (
+            f"real_train_batch_size ({real_train_batch_size}) must be divisible "
+            f"by minimal possible batch size ({minimal_bsz})",
+        )
 
         # A helper function to check "micro_batch_size" vs "micro_batch_size_per_gpu"
         # We throw an error if the user sets both. The new convention is "..._micro_batch_size_per_gpu".
@@ -205,11 +224,15 @@ class AsyncRayPPOTrainer(RayPPOTrainer):
 
                 if mbs is None and mbs_per_gpu is None:
                     raise ValueError(
-                        f"[{name}] Please set at least one of '{name}.{param}' or '{name}.{param_per_gpu}'.")
+                        f"[{name}] Please set at least one of '{name}.{param}' or '{name}.{param_per_gpu}'."
+                    )
 
                 if mbs is not None and mbs_per_gpu is not None:
                     raise ValueError(
-                        f"[{name}] You have set both '{name}.{param}' AND '{name}.{param_per_gpu}'. Please remove '{name}.{param}' because only '*_{param_per_gpu}'" + "is supported (the former is deprecated).")
+                        f"[{name}] You have set both '{name}.{param}' AND '{name}.{param_per_gpu}'. "
+                        f"Please remove '{name}.{param}' because only '*_{param_per_gpu}' "
+                        "is supported (the former is deprecated)."
+                    )
 
         if not config.actor_rollout_ref.actor.use_dynamic_bsz:
             # actor: ppo_micro_batch_size vs. ppo_micro_batch_size_per_gpu
@@ -236,13 +259,15 @@ class AsyncRayPPOTrainer(RayPPOTrainer):
 
         if self.use_critic and not config.critic.use_dynamic_bsz:
             # Check for critic micro-batch size conflicts
-            check_mutually_exclusive(config.critic.ppo_micro_batch_size, config.critic.ppo_micro_batch_size_per_gpu,
-                                     "critic")
+            check_mutually_exclusive(
+                config.critic.ppo_micro_batch_size, config.critic.ppo_micro_batch_size_per_gpu, "critic"
+            )
 
         # Check for reward model micro-batch size conflicts
         if config.reward_model.enable and not config.reward_model.use_dynamic_bsz:
-            check_mutually_exclusive(config.reward_model.micro_batch_size, config.reward_model.micro_batch_size_per_gpu,
-                                     "reward_model")
+            check_mutually_exclusive(
+                config.reward_model.micro_batch_size, config.reward_model.micro_batch_size_per_gpu, "reward_model"
+            )
 
         # Actor
         # check if train_batch_size is larger than ppo_mini_batch_size
@@ -253,7 +278,11 @@ class AsyncRayPPOTrainer(RayPPOTrainer):
             assert config.data.train_batch_size >= config.actor_rollout_ref.actor.ppo_mini_batch_size
             sp_size = config.actor_rollout_ref.actor.get("ulysses_sequence_parallel_size", 1)
             if config.actor_rollout_ref.actor.ppo_micro_batch_size is not None:
-                assert config.actor_rollout_ref.actor.ppo_mini_batch_size % config.actor_rollout_ref.actor.ppo_micro_batch_size == 0
+                assert (
+                    config.actor_rollout_ref.actor.ppo_mini_batch_size
+                    % config.actor_rollout_ref.actor.ppo_micro_batch_size
+                    == 0
+                )
                 assert config.actor_rollout_ref.actor.ppo_micro_batch_size * sp_size >= n_gpus_actor
 
         assert config.actor_rollout_ref.actor.loss_agg_mode in [
@@ -276,28 +305,44 @@ class AsyncRayPPOTrainer(RayPPOTrainer):
 
         # Check if use_remove_padding is enabled when using sequence parallelism for fsdp
         if config.actor_rollout_ref.actor.strategy == "fsdp" and (
-                config.actor_rollout_ref.actor.get("ulysses_sequence_parallel_size",
-                                                   1) > 1 or config.actor_rollout_ref.ref.get(
-            "ulysses_sequence_parallel_size", 1) > 1):
-            assert config.actor_rollout_ref.model.use_remove_padding, "When using sequence parallelism for actor/ref policy, you must enable `use_remove_padding`."
+            config.actor_rollout_ref.actor.get("ulysses_sequence_parallel_size", 1) > 1
+            or config.actor_rollout_ref.ref.get("ulysses_sequence_parallel_size", 1) > 1
+        ):
+            assert config.actor_rollout_ref.model.use_remove_padding, (
+                "When using sequence parallelism for actor/ref policy, you must enable `use_remove_padding`.",
+            )
 
         if self.use_critic and config.critic.strategy == "fsdp":
             if config.critic.get("ulysses_sequence_parallel_size", 1) > 1:
-                assert config.critic.model.use_remove_padding, "When using sequence parallelism for critic, you must enable `use_remove_padding`."
+                assert config.critic.model.use_remove_padding, (
+                    "When using sequence parallelism for critic, you must enable `use_remove_padding`.",
+                )
 
         if config.data.get("val_batch_size", None) is not None:
             print(
-                "WARNING: val_batch_size is deprecated." + " Validation datasets are sent to inference engines as a whole batch," + " which will schedule the memory themselves.")
+                "WARNING: val_batch_size is deprecated."
+                + " Validation datasets are sent to inference engines as a whole batch,"
+                + " which will schedule the memory themselves."
+            )
 
         # check eval config
         if config.actor_rollout_ref.rollout.val_kwargs.do_sample:
-            assert config.actor_rollout_ref.rollout.temperature > 0, "validation gen temperature should be greater than 0 when enabling do_sample"
+            assert config.actor_rollout_ref.rollout.temperature > 0, (
+                "validation gen temperature should be greater than 0 when enabling do_sample"
+            )
 
         # check multi_turn with tool config
         if config.actor_rollout_ref.rollout.multi_turn.enable:
-            assert config.actor_rollout_ref.rollout.multi_turn.tool_config_path is not None or config.actor_rollout_ref.rollout.multi_turn.interaction_config_path is not None, "tool_config_path or interaction_config_path must be set when enabling multi_turn with tool, due to no role-playing support"
-            assert config.algorithm.adv_estimator in [
-                AdvantageEstimator.GRPO], "only GRPO is tested for multi-turn with tool"
+            assert (
+                config.actor_rollout_ref.rollout.multi_turn.tool_config_path is not None
+                or config.actor_rollout_ref.rollout.multi_turn.interaction_config_path is not None
+            ), (
+                "tool_config_path or interaction_config_path must be set "
+                "when enabling multi_turn with tool, due to no role-playing support"
+            )
+            assert config.algorithm.adv_estimator in [AdvantageEstimator.GRPO], (
+                "only GRPO is tested for multi-turn with tool"
+            )
 
         print("[validate_config] All configuration checks passed successfully!")
 
@@ -337,8 +382,9 @@ class AsyncRayPPOTrainer(RayPPOTrainer):
         # create reference policy if needed
         if self.use_reference_policy:
             resource_pool = self.resource_pool_manager.get_resource_pool(Role.RefPolicy)
-            ref_policy_cls = RayClassWithInitArgs(self.role_worker_mapping[Role.RefPolicy],
-                                                  config=self.config.actor_rollout_ref, role="ref")
+            ref_policy_cls = RayClassWithInitArgs(
+                self.role_worker_mapping[Role.RefPolicy], config=self.config.actor_rollout_ref, role="ref"
+            )
             self.resource_pool_to_cls[resource_pool]["ref"] = ref_policy_cls
 
         # create a reward model if reward_fn is None
@@ -359,15 +405,21 @@ class AsyncRayPPOTrainer(RayPPOTrainer):
             wg_kwargs["ray_wait_register_center_timeout"] = self.config.trainer.ray_wait_register_center_timeout
         if OmegaConf.select(self.config.trainer, "profile_steps") is not None:
             wg_kwargs["profile_steps"] = OmegaConf.select(self.config.trainer, "profile_steps")
-            assert OmegaConf.select(self.config.trainer,
-                                    "worker_nsight_options") is not None, "worker_nsight_options must be set when profile_steps is set"
+            assert OmegaConf.select(self.config.trainer, "worker_nsight_options") is not None, (
+                "worker_nsight_options must be set when profile_steps is set"
+            )
             wg_kwargs["worker_nsight_options"] = OmegaConf.to_container(
-                OmegaConf.select(self.config.trainer, "worker_nsight_options"))
+                OmegaConf.select(self.config.trainer, "worker_nsight_options")
+            )
 
         for resource_pool, class_dict in self.resource_pool_to_cls.items():
             worker_dict_cls = create_colocated_worker_cls(class_dict=class_dict)
-            wg_dict = self.ray_worker_group_cls(resource_pool=resource_pool, ray_cls_with_init=worker_dict_cls,
-                                                device_name=self.device_name, **wg_kwargs)
+            wg_dict = self.ray_worker_group_cls(
+                resource_pool=resource_pool,
+                ray_cls_with_init=worker_dict_cls,
+                device_name=self.device_name,
+                **wg_kwargs,
+            )
             spawn_wg = wg_dict.spawn(prefix_set=class_dict.keys())
             all_wg.update(spawn_wg)
 
@@ -393,9 +445,13 @@ class AsyncRayPPOTrainer(RayPPOTrainer):
         from ray.util.collective import collective
 
         actor_rollout_workers = self.actor_wg.workers + self.rollout_wg.workers
-        collective.create_collective_group(actor_rollout_workers, len(actor_rollout_workers),
-                                           list(range(0, len(actor_rollout_workers))), backend="nccl",
-                                           group_name="actor_rollout")
+        collective.create_collective_group(
+            actor_rollout_workers,
+            len(actor_rollout_workers),
+            list(range(0, len(actor_rollout_workers))),
+            backend="nccl",
+            group_name="actor_rollout",
+        )
         self.sync_rollout_weights()
 
         # create async rollout manager and request scheduler
@@ -456,7 +512,7 @@ class AsyncRayPPOTrainer(RayPPOTrainer):
 
         def create_continuous_iterator():
             """
-                Create a continuous data iterator across epochs
+            Create a continuous data iterator across epochs
             """
             for epoch in range(self.config.trainer.total_epochs):
                 iterator = iter(self.train_dataloader)
@@ -465,7 +521,7 @@ class AsyncRayPPOTrainer(RayPPOTrainer):
 
         def async_gen_next_batch(continuous_iterator):
             """
-               Call parameter synchronization and asynchronous sequence generation.
+            Call parameter synchronization and asynchronous sequence generation.
             """
             try:
                 epoch, batch_dict = next(continuous_iterator)
@@ -538,8 +594,9 @@ class AsyncRayPPOTrainer(RayPPOTrainer):
                 with marked_timer("sync_rollout_weights", timing_raw, color="purple"):
                     batch_data_future = async_gen_next_batch(continuous_iterator)
 
-                batch.non_tensor_batch["uid"] = np.array([str(uuid.uuid4()) for _ in range(len(batch.batch))],
-                                                         dtype=object)
+                batch.non_tensor_batch["uid"] = np.array(
+                    [str(uuid.uuid4()) for _ in range(len(batch.batch))], dtype=object
+                )
                 # repeat to align with repeated responses in rollout
                 batch = batch.repeat(repeat_times=self.config.actor_rollout_ref.rollout.n, interleave=True)
                 batch = batch.union(gen_batch_output)
@@ -630,16 +687,18 @@ class AsyncRayPPOTrainer(RayPPOTrainer):
 
                     # compute rewards. apply_kl_penalty if available
                     if self.config.algorithm.use_kl_in_reward:
-                        batch, kl_metrics = apply_kl_penalty(batch, kl_ctrl=self.kl_ctrl_in_reward,
-                                                             kl_penalty=self.config.algorithm.kl_penalty)
+                        batch, kl_metrics = apply_kl_penalty(
+                            batch, kl_ctrl=self.kl_ctrl_in_reward, kl_penalty=self.config.algorithm.kl_penalty
+                        )
                         metrics.update(kl_metrics)
                     else:
                         batch.batch["token_level_rewards"] = batch.batch["token_level_scores"]
 
                     # compute advantages, executed on the driver process
 
-                    norm_adv_by_std_in_grpo = self.config.algorithm.get("norm_adv_by_std_in_grpo",
-                                                                        True)  # GRPO adv normalization factor
+                    norm_adv_by_std_in_grpo = self.config.algorithm.get(
+                        "norm_adv_by_std_in_grpo", True
+                    )  # GRPO adv normalization factor
 
                     batch = compute_advantage(
                         batch,
@@ -684,8 +743,11 @@ class AsyncRayPPOTrainer(RayPPOTrainer):
                         )
 
                 # validate
-                if self.val_reward_fn is not None and self.config.trainer.test_freq > 0 and (
-                        is_last_step or self.global_steps % self.config.trainer.test_freq == 0):
+                if (
+                    self.val_reward_fn is not None
+                    and self.config.trainer.test_freq > 0
+                    and (is_last_step or self.global_steps % self.config.trainer.test_freq == 0)
+                ):
                     with marked_timer("testing", timing_raw, color="green"):
                         val_metrics: dict = self._validate()
                         if is_last_step:
@@ -693,7 +755,8 @@ class AsyncRayPPOTrainer(RayPPOTrainer):
                     metrics.update(val_metrics)
 
                 if self.config.trainer.save_freq > 0 and (
-                        is_last_step or self.global_steps % self.config.trainer.save_freq == 0):
+                    is_last_step or self.global_steps % self.config.trainer.save_freq == 0
+                ):
                     with marked_timer("save_checkpoint", timing_raw, color="green"):
                         self._save_checkpoint()
 

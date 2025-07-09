@@ -2,7 +2,7 @@
 set -xeuo pipefail
 
 project_name='DAPO'
-exp_name='DAPO-Qwen2.5-7b-MATH-0527a1-one-step-off-6-10'
+exp_name='DAPO-Qwen2.5-7b-MATH-0527a1-fsdp2-colocate'
 
 adv_estimator=grpo
 
@@ -22,7 +22,7 @@ overlong_penalty_factor=1.0
 
 loss_agg_mode="token-mean"
 
-train_prompt_bsz=510
+train_prompt_bsz=512
 n_resp_per_prompt=16
 train_prompt_mini_bsz=32
 
@@ -40,7 +40,6 @@ CKPTS_DIR=${CKPTS_DIR:-"${RAY_DATA_HOME}/ckpts/${project_name}/${exp_name}"}
 TRAIN_FILE=${TRAIN_FILE:-"${RAY_DATA_HOME}/data/dapo-math-17k.parquet"}
 TEST_FILE=${TEST_FILE:-"${RAY_DATA_HOME}/data/aime-2024.parquet"}
 
-
 # Algorithm
 temperature=1.0
 top_p=1.0
@@ -52,14 +51,13 @@ sp_size=4
 use_dynamic_bsz=True
 actor_ppo_max_token_len=$(((max_prompt_length + max_response_length) * 2))
 infer_ppo_max_token_len=$(((max_prompt_length + max_response_length) * 3))
-ref_offload=True
-actor_offload=False
-gen_tp=2
+offload=True
+gen_tp=4
 fsdp_size=2
 
 # reference run wandb: https://wandb.ai/verl-org/DAPO%20Reproduction%20on%20verl/runs/ow47vvon?nw=nwusertongyuxuan361
 
-python3 -m recipe.one_step_off_policy.async_main_ppo \
+python3 -m verl.trainer.main_ppo \
     data.train_files="${TRAIN_FILE}" \
     data.val_files="${TEST_FILE}" \
     data.prompt_key=prompt \
@@ -78,7 +76,6 @@ python3 -m recipe.one_step_off_policy.async_main_ppo \
     actor_rollout_ref.actor.clip_ratio_high=${clip_ratio_high} \
     actor_rollout_ref.actor.clip_ratio_c=10.0 \
     actor_rollout_ref.model.use_remove_padding=True \
-    actor_rollout_ref.hybrid_engine=False \
     +actor_rollout_ref.model.override_config.max_position_embeddings=32768 \
     actor_rollout_ref.actor.use_dynamic_bsz=${use_dynamic_bsz} \
     actor_rollout_ref.ref.log_prob_use_dynamic_bsz=${use_dynamic_bsz} \
@@ -92,8 +89,8 @@ python3 -m recipe.one_step_off_policy.async_main_ppo \
     actor_rollout_ref.actor.optim.lr_warmup_steps=10 \
     actor_rollout_ref.actor.optim.weight_decay=0.1 \
     actor_rollout_ref.actor.ppo_mini_batch_size=${train_prompt_mini_bsz} \
-    actor_rollout_ref.actor.fsdp_config.param_offload=${actor_offload} \
-    actor_rollout_ref.actor.fsdp_config.optimizer_offload=${actor_offload} \
+    actor_rollout_ref.actor.fsdp_config.param_offload=${offload} \
+    actor_rollout_ref.actor.fsdp_config.optimizer_offload=${offload} \
     actor_rollout_ref.actor.entropy_coeff=0 \
     actor_rollout_ref.actor.grad_clip=1.0 \
     actor_rollout_ref.actor.loss_agg_mode=${loss_agg_mode} \
@@ -105,13 +102,12 @@ python3 -m recipe.one_step_off_policy.async_main_ppo \
     actor_rollout_ref.rollout.temperature=${temperature} \
     actor_rollout_ref.rollout.top_p=${top_p} \
     actor_rollout_ref.rollout.top_k=${top_k} \
-    actor_rollout_ref.rollout.n_gpus=6 \
     actor_rollout_ref.rollout.val_kwargs.temperature=${temperature} \
     actor_rollout_ref.rollout.val_kwargs.top_p=${val_top_p} \
     actor_rollout_ref.rollout.val_kwargs.top_k=${top_k} \
     actor_rollout_ref.rollout.val_kwargs.do_sample=True \
     actor_rollout_ref.rollout.val_kwargs.n=1 \
-    actor_rollout_ref.ref.fsdp_config.param_offload=${ref_offload} \
+    actor_rollout_ref.ref.fsdp_config.param_offload=${offload} \
     actor_rollout_ref.ref.ulysses_sequence_parallel_size=${sp_size} \
     actor_rollout_ref.actor.fsdp_config.fsdp_size=${fsdp_size} \
     reward_model.reward_manager=dapo \

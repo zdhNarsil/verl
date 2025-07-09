@@ -1,12 +1,19 @@
 set -x
 
-# very important! please modify the max_position_embeddings in config.json to 32768 after downloading from huggingface
-MODEL_PATH=/mnt/dolphinfs/hdd_pool/docker/share/houzhenggang/modelscope/hub/models/Qwen/Qwen3-0.6B
+project_name='GRPO'
+exp_name='GRPO-Qwen3-0.6b-gsm8k-fsdp2-one-step-off-2-6'
+
+# Paths
+RAY_DATA_HOME=${RAY_DATA_HOME:-"${HOME}/verl"}
+MODEL_PATH=${MODEL_PATH:-"${RAY_DATA_HOME}/models/Qwen3-0.6B"}
+CKPTS_DIR=${CKPTS_DIR:-"${RAY_DATA_HOME}/ckpts/${project_name}/${exp_name}"}
+TRAIN_FILE=${TRAIN_FILE:-"${RAY_DATA_HOME}/data/gsm8k/train.parquet"}
+TEST_FILE=${TEST_FILE:-"${RAY_DATA_HOME}/data/gsm8k/test.parquet"}
 
 /home/hadoop-djst-algoplat/miniconda3/bin/python -m recipe.one_step_off_policy.async_main_ppo \
     algorithm.adv_estimator=grpo \
-    data.train_files=$HOME/data/gsm8k/train.parquet \
-    data.val_files=$HOME/data/gsm8k/test.parquet \
+    data.train_files="${TRAIN_FILE}" \
+    data.val_files="${TEST_FILE}" \
     data.train_batch_size=1152 \
     data.max_prompt_length=512 \
     data.max_response_length=1024 \
@@ -40,8 +47,8 @@ MODEL_PATH=/mnt/dolphinfs/hdd_pool/docker/share/houzhenggang/modelscope/hub/mode
     trainer.critic_warmup=0 \
     trainer.val_before_train=True \
     trainer.logger=['console','tensorboard'] \
-    trainer.project_name='verl_grpo_example_gsm8k' \
-    trainer.experiment_name='qwen3_8b_function_rm_async_one_step_off' \
+    trainer.project_name="${project_name}" \
+    trainer.experiment_name="${exp_name}" \
     trainer.n_gpus_per_node=8 \
     trainer.nnodes=1 \
     trainer.save_freq=-1 \

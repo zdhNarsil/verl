@@ -15,15 +15,15 @@ clip_ratio_low=0.2
 clip_ratio_high=0.28
 
 max_prompt_length=$((1024 * 2))
-max_response_length=$((1024 * 20))
+max_response_length=$((1024 * 15))
 enable_overlong_buffer=True
 overlong_buffer_len=$((1024 * 4))
 overlong_penalty_factor=1.0
 
 loss_agg_mode="token-mean"
 
-train_prompt_bsz=516
-n_resp_per_prompt=16
+train_prompt_bsz=512
+n_resp_per_prompt=12
 train_prompt_mini_bsz=32
 
 
@@ -134,7 +134,7 @@ python3 -m recipe.one_step_off_policy.async_main_ppo \
     trainer.test_freq=10 \
     trainer.save_freq=-1 \
     trainer.total_epochs=10 \
-    trainer.total_training_steps=100 \
+    trainer.total_training_steps=100 \ssss
     trainer.default_local_dir="${CKPTS_DIR}" \
     trainer.resume_mode=auto \
     trainer.log_val_generations=10

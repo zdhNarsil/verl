@@ -2,7 +2,7 @@
 set -xeuo pipefail
 
 project_name='DAPO'
-exp_name='DAPO-Qwen2.5-1.5b-MATH-megatron-one-step-off-test'
+exp_name='DAPO-Qwen2.5-7b-MATH-megatron-0519a1'
 
 adv_estimator=grpo
 
@@ -26,14 +26,13 @@ train_prompt_bsz=512
 n_resp_per_prompt=16
 train_prompt_mini_bsz=32
 
-# Ray
-NNODES=1
-# Paths
-MODEL_PATH=/mnt/dolphinfs/hdd_pool/docker/share/huangmincong/huggingface.co/Qwen/Qwen2.5-Math-1.5B
+NNODES=${NNODES:-2}
+NGPUS_PER_NODE=${NGPUS_PER_NODE:-8}
+
+MODEL_PATH=/mnt/dolphinfs/hdd_pool/docker/share/houzhenggang/modelscope/hub/models/Qwen/Qwen2___5-Math-7B
 CKPTS_DIR=./ckpts/${project_name}/${exp_name}
 TRAIN_FILE=/mnt/dolphinfs/hdd_pool/docker/share/huangmincong/huggingface.co/datasets/BytedTsinghua-SIA/DAPO-Math-17k/data/dapo-math-17k.parquet
 TEST_FILE=/mnt/dolphinfs/hdd_pool/docker/share/huangmincong/huggingface.co/datasets/BytedTsinghua-SIA/AIME-2024/data/aime-2024.parquet
-
 
 # Algorithm
 temperature=1.0
@@ -46,9 +45,9 @@ use_dynamic_bsz=True
 actor_ppo_max_token_len=$(((max_prompt_length + max_response_length) * 2))
 infer_ppo_max_token_len=$(((max_prompt_length + max_response_length) * 3))
 offload=True
-gen_tp=2
-train_tp=2
-train_pp=2
+gen_tp=4
+train_tp=4
+train_pp=1
 
 # TODO: support dynamic_bsz for megatron
 # actor_rollout_ref.actor.use_dynamic_bsz=${use_dynamic_bsz} \
@@ -58,9 +57,9 @@ train_pp=2
 # actor_rollout_ref.ref.log_prob_max_token_len_per_gpu=${infer_ppo_max_token_len} \
 # actor_rollout_ref.rollout.log_prob_max_token_len_per_gpu=${infer_ppo_max_token_len} \
 
-python3 -m recipe.one_step_off_policy.async_main_ppo \
+python3 -m verl.trainer.main_ppo \
     --config-path=config \
-    --config-name='async_ppo_megatron_trainer.yaml' \
+    --config-name='ppo_megatron_trainer.yaml' \
     data.train_files="${TRAIN_FILE}" \
     data.val_files="${TEST_FILE}" \
     data.prompt_key=prompt \
@@ -77,6 +76,7 @@ python3 -m recipe.one_step_off_policy.async_main_ppo \
     actor_rollout_ref.actor.clip_ratio_low=${clip_ratio_low} \
     actor_rollout_ref.actor.clip_ratio_high=${clip_ratio_high} \
     actor_rollout_ref.actor.clip_ratio_c=10.0 \
+    +actor_rollout_ref.model.override_config.max_position_embeddings=32768 \
     actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=2 \
     actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=4 \
     actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=4 \
@@ -86,9 +86,9 @@ python3 -m recipe.one_step_off_policy.async_main_ppo \
     actor_rollout_ref.actor.optim.lr_warmup_steps=10 \
     actor_rollout_ref.actor.optim.weight_decay=0.1 \
     actor_rollout_ref.actor.ppo_mini_batch_size=${train_prompt_mini_bsz} \
-    actor_rollout_ref.actor.megatron.param_offload=False \
-    actor_rollout_ref.actor.megatron.optimizer_offload=False \
-    actor_rollout_ref.actor.megatron.grad_offload=False \
+    actor_rollout_ref.actor.megatron.param_offload=${offload} \
+    actor_rollout_ref.actor.megatron.optimizer_offload=${offload} \
+    actor_rollout_ref.actor.megatron.grad_offload=${offload} \
     actor_rollout_ref.actor.megatron.pipeline_model_parallel_size=${train_pp} \
     actor_rollout_ref.actor.megatron.tensor_model_parallel_size=${train_tp} \
     actor_rollout_ref.actor.entropy_coeff=0 \
@@ -106,7 +106,6 @@ python3 -m recipe.one_step_off_policy.async_main_ppo \
     actor_rollout_ref.rollout.val_kwargs.top_k=${top_k} \
     actor_rollout_ref.rollout.val_kwargs.do_sample=True \
     actor_rollout_ref.rollout.val_kwargs.n=1 \
-    actor_rollout_ref.rollout.n_gpus=4 \
     actor_rollout_ref.ref.megatron.pipeline_model_parallel_size=${train_pp} \
     actor_rollout_ref.ref.megatron.tensor_model_parallel_size=${train_tp} \
     actor_rollout_ref.ref.megatron.param_offload=${offload} \
@@ -125,7 +124,6 @@ python3 -m recipe.one_step_off_policy.async_main_ppo \
     trainer.test_freq=10 \
     trainer.save_freq=-1 \
     trainer.total_epochs=10 \
-    trainer.total_training_steps=100 \
     trainer.default_local_dir="${CKPTS_DIR}" \
     trainer.resume_mode=auto \
     trainer.log_val_generations=10

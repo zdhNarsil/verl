@@ -64,8 +64,6 @@ def run_ppo(config) -> None:
         # NCCL debug level, VLLM logging level, and allow runtime LoRA updating
         # `num_cpus` specifies the number of CPU cores Ray can use, obtained from the configuration
         ray.init(
-            dashboard_host="0.0.0.0",
-            dashboard_port=8412,
             runtime_env={
                 "env_vars": {
                     "TOKENIZERS_PARALLELISM": "true",

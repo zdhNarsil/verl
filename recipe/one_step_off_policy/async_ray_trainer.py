@@ -40,7 +40,8 @@ from verl.trainer.ppo.metric_utils import (
     compute_throughout_metrics,
     compute_timing_metrics,
 )
-from verl.trainer.ppo.ray_trainer import RayPPOTrainer, ResourcePoolManager, Role, WorkerType, apply_kl_penalty, compute_advantage, compute_response_mask
+from verl.trainer.ppo.ray_trainer import RayPPOTrainer, ResourcePoolManager, Role, WorkerType, apply_kl_penalty, \
+    compute_advantage, compute_response_mask
 from verl.trainer.ppo.reward import compute_reward, compute_reward_async
 from verl.utils.debug import marked_timer
 from verl.utils.metric import (
@@ -53,9 +54,16 @@ class GenerationBatchFuture:
     """
     Wrapper class for encapsulating batch generation results
     """
-    def __init__(self, batch, gen_batch_output):
-        self.batch = batch  # Input batch data 
-        self.gen_batch_output = gen_batch_output  # Generated sequences from the main model (DataProtoFuture)
+
+    def __init__(self, epoch, batch, gen_batch_output):
+        """
+        :param epoch: current epoch
+        :param batch: Input batch data
+        :param gen_batch_output: Generated sequences from the main model (DataProtoFuture)
+        """
+        self.epoch = epoch
+        self.batch = batch
+        self.gen_batch_output = gen_batch_output
 
     def get(self):
         """
@@ -71,27 +79,28 @@ class GenerationBatchFuture:
             gen_batch_result = self.gen_batch_output.get()
         else:
             gen_batch_result = self.gen_batch_output
-        
-        return self.batch, gen_batch_result
-    
+
+        return self.epoch, self.batch, gen_batch_result
+
+
 class AsyncRayPPOTrainer(RayPPOTrainer):
     # TODO: support each role have individual ray_worker_group_cls,
     # i.e., support different backend of different role
     def __init__(
-        self,
-        config,
-        tokenizer,
-        role_worker_mapping: dict[Role, WorkerType],
-        resource_pool_manager: ResourcePoolManager,
-        ray_worker_group_cls: RayWorkerGroup = RayWorkerGroup,
-        processor=None,
-        reward_fn=None,
-        val_reward_fn=None,
-        train_dataset: Optional[Dataset] = None,
-        val_dataset: Optional[Dataset] = None,
-        collate_fn=None,
-        train_sampler: Optional[Sampler] = None,
-        device_name="cuda",
+            self,
+            config,
+            tokenizer,
+            role_worker_mapping: dict[Role, WorkerType],
+            resource_pool_manager: ResourcePoolManager,
+            ray_worker_group_cls: RayWorkerGroup = RayWorkerGroup,
+            processor=None,
+            reward_fn=None,
+            val_reward_fn=None,
+            train_dataset: Optional[Dataset] = None,
+            val_dataset: Optional[Dataset] = None,
+            collate_fn=None,
+            train_sampler: Optional[Sampler] = None,
+            device_name="cuda",
     ):
         """
         Initialize distributed PPO trainer with Ray backend.
@@ -165,10 +174,12 @@ class AsyncRayPPOTrainer(RayPPOTrainer):
         n_gpus_actor = n_gpus if config.actor_rollout_ref.hybrid_engine else n_gpus - config.actor_rollout_ref.rollout.n_gpus
         if config.actor_rollout_ref.actor.strategy == "megatron":
             model_parallel_size = config.actor_rollout_ref.actor.megatron.tensor_model_parallel_size * config.actor_rollout_ref.actor.megatron.pipeline_model_parallel_size
-            assert n_gpus_actor % (model_parallel_size * config.actor_rollout_ref.actor.megatron.context_parallel_size) == 0, (
+            assert n_gpus_actor % (
+                    model_parallel_size * config.actor_rollout_ref.actor.megatron.context_parallel_size) == 0, (
                 f"n_gpus_actor ({n_gpus_actor}) must be divisible by model_parallel_size ({model_parallel_size}) times context_parallel_size ({config.actor_rollout_ref.actor.megatron.context_parallel_size})"
             )
-            megatron_dp = n_gpus_actor // (model_parallel_size * config.actor_rollout_ref.actor.megatron.context_parallel_size)
+            megatron_dp = n_gpus_actor // (
+                    model_parallel_size * config.actor_rollout_ref.actor.megatron.context_parallel_size)
             minimal_bsz = megatron_dp * config.actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu
         else:
             minimal_bsz = n_gpus_actor
@@ -193,10 +204,12 @@ class AsyncRayPPOTrainer(RayPPOTrainer):
                 param_per_gpu = f"{param}_per_gpu"
 
                 if mbs is None and mbs_per_gpu is None:
-                    raise ValueError(f"[{name}] Please set at least one of '{name}.{param}' or '{name}.{param_per_gpu}'.")
+                    raise ValueError(
+                        f"[{name}] Please set at least one of '{name}.{param}' or '{name}.{param_per_gpu}'.")
 
                 if mbs is not None and mbs_per_gpu is not None:
-                    raise ValueError(f"[{name}] You have set both '{name}.{param}' AND '{name}.{param_per_gpu}'. Please remove '{name}.{param}' because only '*_{param_per_gpu}'" + "is supported (the former is deprecated).")
+                    raise ValueError(
+                        f"[{name}] You have set both '{name}.{param}' AND '{name}.{param_per_gpu}'. Please remove '{name}.{param}' because only '*_{param_per_gpu}'" + "is supported (the former is deprecated).")
 
         if not config.actor_rollout_ref.actor.use_dynamic_bsz:
             # actor: ppo_micro_batch_size vs. ppo_micro_batch_size_per_gpu
@@ -223,11 +236,13 @@ class AsyncRayPPOTrainer(RayPPOTrainer):
 
         if self.use_critic and not config.critic.use_dynamic_bsz:
             # Check for critic micro-batch size conflicts
-            check_mutually_exclusive(config.critic.ppo_micro_batch_size, config.critic.ppo_micro_batch_size_per_gpu, "critic")
+            check_mutually_exclusive(config.critic.ppo_micro_batch_size, config.critic.ppo_micro_batch_size_per_gpu,
+                                     "critic")
 
         # Check for reward model micro-batch size conflicts
         if config.reward_model.enable and not config.reward_model.use_dynamic_bsz:
-            check_mutually_exclusive(config.reward_model.micro_batch_size, config.reward_model.micro_batch_size_per_gpu, "reward_model")
+            check_mutually_exclusive(config.reward_model.micro_batch_size, config.reward_model.micro_batch_size_per_gpu,
+                                     "reward_model")
 
         # Actor
         # check if train_batch_size is larger than ppo_mini_batch_size
@@ -260,7 +275,10 @@ class AsyncRayPPOTrainer(RayPPOTrainer):
                 assert config.critic.ppo_micro_batch_size * sp_size >= n_gpus_actor
 
         # Check if use_remove_padding is enabled when using sequence parallelism for fsdp
-        if config.actor_rollout_ref.actor.strategy == "fsdp" and (config.actor_rollout_ref.actor.get("ulysses_sequence_parallel_size", 1) > 1 or config.actor_rollout_ref.ref.get("ulysses_sequence_parallel_size", 1) > 1):
+        if config.actor_rollout_ref.actor.strategy == "fsdp" and (
+                config.actor_rollout_ref.actor.get("ulysses_sequence_parallel_size",
+                                                   1) > 1 or config.actor_rollout_ref.ref.get(
+            "ulysses_sequence_parallel_size", 1) > 1):
             assert config.actor_rollout_ref.model.use_remove_padding, "When using sequence parallelism for actor/ref policy, you must enable `use_remove_padding`."
 
         if self.use_critic and config.critic.strategy == "fsdp":
@@ -268,7 +286,8 @@ class AsyncRayPPOTrainer(RayPPOTrainer):
                 assert config.critic.model.use_remove_padding, "When using sequence parallelism for critic, you must enable `use_remove_padding`."
 
         if config.data.get("val_batch_size", None) is not None:
-            print("WARNING: val_batch_size is deprecated." + " Validation datasets are sent to inference engines as a whole batch," + " which will schedule the memory themselves.")
+            print(
+                "WARNING: val_batch_size is deprecated." + " Validation datasets are sent to inference engines as a whole batch," + " which will schedule the memory themselves.")
 
         # check eval config
         if config.actor_rollout_ref.rollout.val_kwargs.do_sample:
@@ -277,7 +296,8 @@ class AsyncRayPPOTrainer(RayPPOTrainer):
         # check multi_turn with tool config
         if config.actor_rollout_ref.rollout.multi_turn.enable:
             assert config.actor_rollout_ref.rollout.multi_turn.tool_config_path is not None or config.actor_rollout_ref.rollout.multi_turn.interaction_config_path is not None, "tool_config_path or interaction_config_path must be set when enabling multi_turn with tool, due to no role-playing support"
-            assert config.algorithm.adv_estimator in [AdvantageEstimator.GRPO], "only GRPO is tested for multi-turn with tool"
+            assert config.algorithm.adv_estimator in [
+                AdvantageEstimator.GRPO], "only GRPO is tested for multi-turn with tool"
 
         print("[validate_config] All configuration checks passed successfully!")
 
@@ -317,7 +337,8 @@ class AsyncRayPPOTrainer(RayPPOTrainer):
         # create reference policy if needed
         if self.use_reference_policy:
             resource_pool = self.resource_pool_manager.get_resource_pool(Role.RefPolicy)
-            ref_policy_cls = RayClassWithInitArgs(self.role_worker_mapping[Role.RefPolicy], config=self.config.actor_rollout_ref, role="ref")
+            ref_policy_cls = RayClassWithInitArgs(self.role_worker_mapping[Role.RefPolicy],
+                                                  config=self.config.actor_rollout_ref, role="ref")
             self.resource_pool_to_cls[resource_pool]["ref"] = ref_policy_cls
 
         # create a reward model if reward_fn is None
@@ -338,12 +359,15 @@ class AsyncRayPPOTrainer(RayPPOTrainer):
             wg_kwargs["ray_wait_register_center_timeout"] = self.config.trainer.ray_wait_register_center_timeout
         if OmegaConf.select(self.config.trainer, "profile_steps") is not None:
             wg_kwargs["profile_steps"] = OmegaConf.select(self.config.trainer, "profile_steps")
-            assert OmegaConf.select(self.config.trainer, "worker_nsight_options") is not None, "worker_nsight_options must be set when profile_steps is set"
-            wg_kwargs["worker_nsight_options"] = OmegaConf.to_container(OmegaConf.select(self.config.trainer, "worker_nsight_options"))
+            assert OmegaConf.select(self.config.trainer,
+                                    "worker_nsight_options") is not None, "worker_nsight_options must be set when profile_steps is set"
+            wg_kwargs["worker_nsight_options"] = OmegaConf.to_container(
+                OmegaConf.select(self.config.trainer, "worker_nsight_options"))
 
         for resource_pool, class_dict in self.resource_pool_to_cls.items():
             worker_dict_cls = create_colocated_worker_cls(class_dict=class_dict)
-            wg_dict = self.ray_worker_group_cls(resource_pool=resource_pool, ray_cls_with_init=worker_dict_cls, device_name=self.device_name, **wg_kwargs)
+            wg_dict = self.ray_worker_group_cls(resource_pool=resource_pool, ray_cls_with_init=worker_dict_cls,
+                                                device_name=self.device_name, **wg_kwargs)
             spawn_wg = wg_dict.spawn(prefix_set=class_dict.keys())
             all_wg.update(spawn_wg)
 
@@ -369,7 +393,9 @@ class AsyncRayPPOTrainer(RayPPOTrainer):
         from ray.util.collective import collective
 
         actor_rollout_workers = self.actor_wg.workers + self.rollout_wg.workers
-        collective.create_collective_group(actor_rollout_workers, len(actor_rollout_workers), list(range(0, len(actor_rollout_workers))), backend="nccl", group_name="actor_rollout")
+        collective.create_collective_group(actor_rollout_workers, len(actor_rollout_workers),
+                                           list(range(0, len(actor_rollout_workers))), backend="nccl",
+                                           group_name="actor_rollout")
         self.sync_rollout_weights()
 
         # create async rollout manager and request scheduler
@@ -428,262 +454,281 @@ class AsyncRayPPOTrainer(RayPPOTrainer):
         self.global_steps += 1
         last_val_metrics = None
 
-        for epoch in range(self.config.trainer.total_epochs):
-            batch_data_future = None
-            iterator = iter(self.train_dataloader)
+        def create_continuous_iterator():
+            """
+                Create a continuous data iterator across epochs
+            """
+            for epoch in range(self.config.trainer.total_epochs):
+                iterator = iter(self.train_dataloader)
+                for batch_dict in iterator:
+                    yield epoch, batch_dict
 
-            def asys_gen_next_batch(iterator):
-                try:
-                    batch_dict = next(iterator)
-                except StopIteration:
-                    return None
+        def async_gen_next_batch(continuous_iterator):
+            """
+               Call parameter synchronization and asynchronous sequence generation.
+            """
+            try:
+                epoch, batch_dict = next(continuous_iterator)
+            except StopIteration:
+                return None
+            except Exception as e:
+                print(f"Error in async_gen_next_batch: {e}")
+                return None
 
-                batch = DataProto.from_single_dict(batch_dict)
-                # pop those keys for generation
-                batch_keys_to_pop = ["input_ids", "attention_mask", "position_ids"]
-                non_tensor_batch_keys_to_pop = ["raw_prompt_ids"]
-                if "multi_modal_data" in batch.non_tensor_batch:
-                    non_tensor_batch_keys_to_pop.append("multi_modal_data")
-                if "raw_prompt" in batch.non_tensor_batch:
-                    non_tensor_batch_keys_to_pop.append("raw_prompt")
-                if "tools_kwargs" in batch.non_tensor_batch:
-                    non_tensor_batch_keys_to_pop.append("tools_kwargs")
-                if "interaction_kwargs" in batch.non_tensor_batch:
-                    non_tensor_batch_keys_to_pop.append("interaction_kwargs")
-                gen_batch = batch.pop(
-                    batch_keys=batch_keys_to_pop,
-                    non_tensor_batch_keys=non_tensor_batch_keys_to_pop,
-                )
+            batch = DataProto.from_single_dict(batch_dict)
+            # pop those keys for generation
+            batch_keys_to_pop = ["input_ids", "attention_mask", "position_ids"]
+            non_tensor_batch_keys_to_pop = ["raw_prompt_ids"]
+            if "multi_modal_data" in batch.non_tensor_batch:
+                non_tensor_batch_keys_to_pop.append("multi_modal_data")
+            if "raw_prompt" in batch.non_tensor_batch:
+                non_tensor_batch_keys_to_pop.append("raw_prompt")
+            if "tools_kwargs" in batch.non_tensor_batch:
+                non_tensor_batch_keys_to_pop.append("tools_kwargs")
+            if "interaction_kwargs" in batch.non_tensor_batch:
+                non_tensor_batch_keys_to_pop.append("interaction_kwargs")
+            gen_batch = batch.pop(
+                batch_keys=batch_keys_to_pop,
+                non_tensor_batch_keys=non_tensor_batch_keys_to_pop,
+            )
 
-                # sync weights from actor to rollout
-                self.sync_rollout_weights()
+            # sync weights from actor to rollout
+            self.sync_rollout_weights()
 
-                # async generation
-                gen_batch_output = self.rollout_wg.async_generate_sequences(gen_batch)
+            # async generation
+            gen_batch_output = self.rollout_wg.async_generate_sequences(gen_batch)
 
-                return GenerationBatchFuture(batch, gen_batch_output)
-            
-            # first call asys_gen_next_batch before train
-            batch_data_future = asys_gen_next_batch(iterator)
+            return GenerationBatchFuture(epoch, batch, gen_batch_output)
 
-            while batch_data_future is not None:
-                do_profile = (
-                    self.global_steps in self.config.trainer.profile_steps
-                    if self.config.trainer.profile_steps is not None
-                    else False
-                )
-                if do_profile:
-                    self.actor_wg.start_profile()
-                    if not self.hybrid_engine:
-                        self.rollout_wg.start_profile()
-                    if self.use_reference_policy:
-                        self.ref_policy_wg.start_profile()
-                    if self.use_critic:
-                        self.critic_wg.start_profile()
+        # across epoch iterator
+        continuous_iterator = create_continuous_iterator()
+
+        # Start the first asynchronous generation task.
+        batch_data_future = async_gen_next_batch(continuous_iterator)
+
+        while batch_data_future is not None:
+            do_profile = (
+                self.global_steps in self.config.trainer.profile_steps
+                if self.config.trainer.profile_steps is not None
+                else False
+            )
+            if do_profile:
+                self.actor_wg.start_profile()
+                if not self.hybrid_engine:
+                    self.rollout_wg.start_profile()
+                if self.use_reference_policy:
+                    self.ref_policy_wg.start_profile()
+                if self.use_critic:
+                    self.critic_wg.start_profile()
+                if self.use_rm:
+                    self.rm_wg.start_profile()
+
+            metrics = {}
+            timing_raw = {}
+            is_last_step = self.global_steps >= self.total_training_steps
+
+            with marked_timer("step", timing_raw):
+                # wait for the previous batch
+                with marked_timer("wait_prev_gen", timing_raw, color="red"):
+                    epoch, batch, gen_batch_output = batch_data_future.get()
+                    timing_raw.update(gen_batch_output.meta_info["timing"])
+                    gen_batch_output.meta_info.pop("timing", None)
+
+                # asys next generation (with syns weights from actor to rollout)
+                with marked_timer("sync_rollout_weights", timing_raw, color="purple"):
+                    batch_data_future = async_gen_next_batch(continuous_iterator)
+
+                batch.non_tensor_batch["uid"] = np.array([str(uuid.uuid4()) for _ in range(len(batch.batch))],
+                                                         dtype=object)
+                # repeat to align with repeated responses in rollout
+                batch = batch.repeat(repeat_times=self.config.actor_rollout_ref.rollout.n, interleave=True)
+                batch = batch.union(gen_batch_output)
+
+                batch.batch["response_mask"] = compute_response_mask(batch)
+                # Balance the number of valid tokens across DP ranks.
+                # NOTE: This usually changes the order of data in the `batch`,
+                # which won't affect the advantage calculation (since it's based on uid),
+                # but might affect the loss calculation (due to the change of mini-batching).
+                # TODO: Decouple the DP balancing and mini-batching.
+                if self.config.trainer.balance_batch:
+                    self._balance_batch(batch, metrics=metrics)
+
+                # compute global_valid tokens
+                batch.meta_info["global_token_num"] = torch.sum(batch.batch["attention_mask"], dim=-1).tolist()
+
+                with marked_timer("reward", timing_raw, color="yellow"):
+                    # compute reward model score
                     if self.use_rm:
-                        self.rm_wg.start_profile()
+                        reward_tensor = self.rm_wg.compute_rm_score(batch)
+                        batch = batch.union(reward_tensor)
 
-                metrics = {}
-                timing_raw = {}
-                is_last_step = self.global_steps >= self.total_training_steps
+                    if self.config.reward_model.launch_reward_fn_async:
+                        future_reward = compute_reward_async.remote(batch, self.config, self.tokenizer)
+                    else:
+                        reward_tensor, reward_extra_infos_dict = compute_reward(batch, self.reward_fn)
 
-                with marked_timer("step", timing_raw):
-                    # wait for the previous batch 
-                    with marked_timer("wait_prev_gen", timing_raw, color="red"):
-                        batch, gen_batch_output = batch_data_future.get()
-                        timing_raw.update(gen_batch_output.meta_info["timing"])
-                        gen_batch_output.meta_info.pop("timing", None)
-                        
-                    # asys next generation (with syns weights from actor to rollout)
-                    with marked_timer("sync_rollout_weights", timing_raw, color="purple"):
-                        batch_data_future = asys_gen_next_batch(iterator)
+                # recompute old_log_probs
+                with marked_timer("old_log_prob", timing_raw, color="blue"):
+                    old_log_prob = self.actor_wg.compute_log_prob(batch)
+                    entropys = old_log_prob.batch["entropys"]
+                    response_masks = batch.batch["response_mask"]
+                    loss_agg_mode = self.config.actor_rollout_ref.actor.loss_agg_mode
+                    entropy_agg = agg_loss(loss_mat=entropys, loss_mask=response_masks, loss_agg_mode=loss_agg_mode)
+                    old_log_prob_metrics = {"actor/entropy": entropy_agg.detach().item()}
+                    metrics.update(old_log_prob_metrics)
+                    old_log_prob.batch.pop("entropys")
+                    batch = batch.union(old_log_prob)
 
-                    batch.non_tensor_batch["uid"] = np.array([str(uuid.uuid4()) for _ in range(len(batch.batch))], dtype=object)
-                    # repeat to align with repeated responses in rollout
-                    batch = batch.repeat(repeat_times=self.config.actor_rollout_ref.rollout.n, interleave=True)
-                    batch = batch.union(gen_batch_output)
+                    if "rollout_log_probs" in batch.batch.keys():
+                        # TODO: we may want to add diff of probs too.
+                        rollout_old_log_probs = batch.batch["rollout_log_probs"]
+                        actor_old_log_probs = batch.batch["old_log_probs"]
+                        attention_mask = batch.batch["attention_mask"]
+                        responses = batch.batch["responses"]
+                        response_length = responses.size(1)
+                        response_mask = attention_mask[:, -response_length:]
 
-                    batch.batch["response_mask"] = compute_response_mask(batch)
-                    # Balance the number of valid tokens across DP ranks.
-                    # NOTE: This usually changes the order of data in the `batch`,
-                    # which won't affect the advantage calculation (since it's based on uid),
-                    # but might affect the loss calculation (due to the change of mini-batching).
-                    # TODO: Decouple the DP balancing and mini-batching.
-                    if self.config.trainer.balance_batch:
-                        self._balance_batch(batch, metrics=metrics)
-
-                    # compute global_valid tokens
-                    batch.meta_info["global_token_num"] = torch.sum(batch.batch["attention_mask"], dim=-1).tolist()
-
-                    with marked_timer("reward", timing_raw, color="yellow"):
-                        # compute reward model score
-                        if self.use_rm:
-                            reward_tensor = self.rm_wg.compute_rm_score(batch)
-                            batch = batch.union(reward_tensor)
-
-                        if self.config.reward_model.launch_reward_fn_async:
-                            future_reward = compute_reward_async.remote(batch, self.config, self.tokenizer)
-                        else:
-                            reward_tensor, reward_extra_infos_dict = compute_reward(batch, self.reward_fn)
-
-                    # recompute old_log_probs
-                    with marked_timer("old_log_prob", timing_raw, color="blue"):
-                        old_log_prob = self.actor_wg.compute_log_prob(batch)
-                        entropys = old_log_prob.batch["entropys"]
-                        response_masks = batch.batch["response_mask"]
-                        loss_agg_mode = self.config.actor_rollout_ref.actor.loss_agg_mode
-                        entropy_agg = agg_loss(loss_mat=entropys, loss_mask=response_masks, loss_agg_mode=loss_agg_mode)
-                        old_log_prob_metrics = {"actor/entropy": entropy_agg.detach().item()}
-                        metrics.update(old_log_prob_metrics)
-                        old_log_prob.batch.pop("entropys")
-                        batch = batch.union(old_log_prob)
-
-                        if "rollout_log_probs" in batch.batch.keys():
-                            # TODO: we may want to add diff of probs too.
-                            rollout_old_log_probs = batch.batch["rollout_log_probs"]
-                            actor_old_log_probs = batch.batch["old_log_probs"]
-                            attention_mask = batch.batch["attention_mask"]
-                            responses = batch.batch["responses"]
-                            response_length = responses.size(1)
-                            response_mask = attention_mask[:, -response_length:]
-
-                            rollout_probs = torch.exp(rollout_old_log_probs)
-                            actor_probs = torch.exp(actor_old_log_probs)
-                            rollout_probs_diff = torch.abs(rollout_probs - actor_probs)
-                            rollout_probs_diff = torch.masked_select(rollout_probs_diff, response_mask.bool())
-                            rollout_probs_diff_max = torch.max(rollout_probs_diff)
-                            rollout_probs_diff_mean = torch.mean(rollout_probs_diff)
-                            rollout_probs_diff_std = torch.std(rollout_probs_diff)
-                            metrics.update(
-                                {
-                                    "training/rollout_probs_diff_max": rollout_probs_diff_max.detach().item(),
-                                    "training/rollout_probs_diff_mean": rollout_probs_diff_mean.detach().item(),
-                                    "training/rollout_probs_diff_std": rollout_probs_diff_std.detach().item(),
-                                }
-                            )
-
-                    if self.use_reference_policy:
-                        # compute reference log_prob
-                        with marked_timer("ref", timing_raw, color="olive"):
-                            if not self.ref_in_actor:
-                                ref_log_prob = self.ref_policy_wg.compute_ref_log_prob(batch)
-                            else:
-                                ref_log_prob = self.actor_wg.compute_ref_log_prob(batch)
-                            batch = batch.union(ref_log_prob)
-
-                    # compute values
-                    if self.use_critic:
-                        with marked_timer("values", timing_raw, color="cyan"):
-                            values = self.critic_wg.compute_values(batch)
-                            batch = batch.union(values)
-
-                    with marked_timer("adv", timing_raw, color="brown"):
-                        # we combine with rule-based rm
-                        reward_extra_infos_dict: dict[str, list]
-                        if self.config.reward_model.launch_reward_fn_async:
-                            reward_tensor, reward_extra_infos_dict = ray.get(future_reward)
-                        batch.batch["token_level_scores"] = reward_tensor
-
-                        if reward_extra_infos_dict:
-                            batch.non_tensor_batch.update({k: np.array(v) for k, v in reward_extra_infos_dict.items()})
-
-                        # compute rewards. apply_kl_penalty if available
-                        if self.config.algorithm.use_kl_in_reward:
-                            batch, kl_metrics = apply_kl_penalty(batch, kl_ctrl=self.kl_ctrl_in_reward, kl_penalty=self.config.algorithm.kl_penalty)
-                            metrics.update(kl_metrics)
-                        else:
-                            batch.batch["token_level_rewards"] = batch.batch["token_level_scores"]
-
-                        # compute advantages, executed on the driver process
-
-                        norm_adv_by_std_in_grpo = self.config.algorithm.get("norm_adv_by_std_in_grpo", True)  # GRPO adv normalization factor
-
-                        batch = compute_advantage(
-                            batch,
-                            adv_estimator=self.config.algorithm.adv_estimator,
-                            gamma=self.config.algorithm.gamma,
-                            lam=self.config.algorithm.lam,
-                            num_repeat=self.config.actor_rollout_ref.rollout.n,
-                            norm_adv_by_std_in_grpo=norm_adv_by_std_in_grpo,
-                            config=self.config.algorithm,
+                        rollout_probs = torch.exp(rollout_old_log_probs)
+                        actor_probs = torch.exp(actor_old_log_probs)
+                        rollout_probs_diff = torch.abs(rollout_probs - actor_probs)
+                        rollout_probs_diff = torch.masked_select(rollout_probs_diff, response_mask.bool())
+                        rollout_probs_diff_max = torch.max(rollout_probs_diff)
+                        rollout_probs_diff_mean = torch.mean(rollout_probs_diff)
+                        rollout_probs_diff_std = torch.std(rollout_probs_diff)
+                        metrics.update(
+                            {
+                                "training/rollout_probs_diff_max": rollout_probs_diff_max.detach().item(),
+                                "training/rollout_probs_diff_mean": rollout_probs_diff_mean.detach().item(),
+                                "training/rollout_probs_diff_std": rollout_probs_diff_std.detach().item(),
+                            }
                         )
 
-                    # update critic
-                    if self.use_critic:
-                        with marked_timer("update_critic", timing_raw, color="pink"):
-                            critic_output = self.critic_wg.update_critic(batch)
-                        critic_output_metrics = reduce_metrics(critic_output.meta_info["metrics"])
-                        metrics.update(critic_output_metrics)
+                if self.use_reference_policy:
+                    # compute reference log_prob
+                    with marked_timer("ref", timing_raw, color="olive"):
+                        if not self.ref_in_actor:
+                            ref_log_prob = self.ref_policy_wg.compute_ref_log_prob(batch)
+                        else:
+                            ref_log_prob = self.actor_wg.compute_ref_log_prob(batch)
+                        batch = batch.union(ref_log_prob)
 
-                    # implement critic warmup
-                    if self.config.trainer.critic_warmup <= self.global_steps:
-                        # update actor
-                        with marked_timer("update_actor", timing_raw, color="red"):
-                            batch.meta_info["multi_turn"] = self.config.actor_rollout_ref.rollout.multi_turn.enable
-                            actor_output = self.actor_wg.update_actor(batch)
-                        actor_output_metrics = reduce_metrics(actor_output.meta_info["metrics"])
-                        metrics.update(actor_output_metrics)
+                # compute values
+                if self.use_critic:
+                    with marked_timer("values", timing_raw, color="cyan"):
+                        values = self.critic_wg.compute_values(batch)
+                        batch = batch.union(values)
 
-                    # Log rollout generations if enabled
-                    rollout_data_dir = self.config.trainer.get("rollout_data_dir", None)
-                    if rollout_data_dir:
-                        with marked_timer("dump_rollout_generations", timing_raw, color="green"):
-                            print(batch.batch.keys())
-                            inputs = self.tokenizer.batch_decode(batch.batch["prompts"], skip_special_tokens=True)
-                            outputs = self.tokenizer.batch_decode(batch.batch["responses"], skip_special_tokens=True)
-                            scores = batch.batch["token_level_scores"].sum(-1).cpu().tolist()
-                            self._dump_generations(
-                                inputs=inputs,
-                                outputs=outputs,
-                                scores=scores,
-                                reward_extra_infos_dict=reward_extra_infos_dict,
-                                dump_path=rollout_data_dir,
-                            )
+                with marked_timer("adv", timing_raw, color="brown"):
+                    # we combine with rule-based rm
+                    reward_extra_infos_dict: dict[str, list]
+                    if self.config.reward_model.launch_reward_fn_async:
+                        reward_tensor, reward_extra_infos_dict = ray.get(future_reward)
+                    batch.batch["token_level_scores"] = reward_tensor
 
-                    # validate
-                    if self.val_reward_fn is not None and self.config.trainer.test_freq > 0 and (is_last_step or self.global_steps % self.config.trainer.test_freq == 0):
-                        with marked_timer("testing", timing_raw, color="green"):
-                            val_metrics: dict = self._validate()
-                            if is_last_step:
-                                last_val_metrics = val_metrics
-                        metrics.update(val_metrics)
+                    if reward_extra_infos_dict:
+                        batch.non_tensor_batch.update({k: np.array(v) for k, v in reward_extra_infos_dict.items()})
 
-                    if self.config.trainer.save_freq > 0 and (is_last_step or self.global_steps % self.config.trainer.save_freq == 0):
-                        with marked_timer("save_checkpoint", timing_raw, color="green"):
-                            self._save_checkpoint()
+                    # compute rewards. apply_kl_penalty if available
+                    if self.config.algorithm.use_kl_in_reward:
+                        batch, kl_metrics = apply_kl_penalty(batch, kl_ctrl=self.kl_ctrl_in_reward,
+                                                             kl_penalty=self.config.algorithm.kl_penalty)
+                        metrics.update(kl_metrics)
+                    else:
+                        batch.batch["token_level_rewards"] = batch.batch["token_level_scores"]
 
-                # training metrics
-                metrics.update(
-                    {
-                        "training/global_step": self.global_steps,
-                        "training/epoch": epoch,
-                    }
-                )
-                # collect metrics
-                metrics.update(compute_data_metrics(batch=batch, use_critic=self.use_critic))
-                metrics.update(compute_timing_metrics(batch=batch, timing_raw=timing_raw))
-                # TODO: implement actual tflpo and theoretical tflpo
-                n_gpus = self.resource_pool_manager.get_n_gpus()
-                metrics.update(compute_throughout_metrics(batch=batch, timing_raw=timing_raw, n_gpus=n_gpus))
+                    # compute advantages, executed on the driver process
 
-                # TODO: make a canonical logger that supports various backend
-                logger.log(data=metrics, step=self.global_steps)
+                    norm_adv_by_std_in_grpo = self.config.algorithm.get("norm_adv_by_std_in_grpo",
+                                                                        True)  # GRPO adv normalization factor
 
-                progress_bar.update(1)
-                self.global_steps += 1
+                    batch = compute_advantage(
+                        batch,
+                        adv_estimator=self.config.algorithm.adv_estimator,
+                        gamma=self.config.algorithm.gamma,
+                        lam=self.config.algorithm.lam,
+                        num_repeat=self.config.actor_rollout_ref.rollout.n,
+                        norm_adv_by_std_in_grpo=norm_adv_by_std_in_grpo,
+                        config=self.config.algorithm,
+                    )
 
-                if do_profile:
-                    self.actor_wg.stop_profile()
-                    if not self.hybrid_engine:
-                        self.rollout_wg.stop_profile()
-                    if self.use_reference_policy:
-                        self.ref_policy_wg.stop_profile()
-                    if self.use_critic:
-                        self.critic_wg.stop_profile()
-                    if self.use_rm:
-                        self.rm_wg.stop_profile()
+                # update critic
+                if self.use_critic:
+                    with marked_timer("update_critic", timing_raw, color="pink"):
+                        critic_output = self.critic_wg.update_critic(batch)
+                    critic_output_metrics = reduce_metrics(critic_output.meta_info["metrics"])
+                    metrics.update(critic_output_metrics)
 
-                if is_last_step:
-                    pprint(f"Final validation metrics: {last_val_metrics}")
-                    progress_bar.close()
-                    return
+                # implement critic warmup
+                if self.config.trainer.critic_warmup <= self.global_steps:
+                    # update actor
+                    with marked_timer("update_actor", timing_raw, color="red"):
+                        batch.meta_info["multi_turn"] = self.config.actor_rollout_ref.rollout.multi_turn.enable
+                        actor_output = self.actor_wg.update_actor(batch)
+                    actor_output_metrics = reduce_metrics(actor_output.meta_info["metrics"])
+                    metrics.update(actor_output_metrics)
+
+                # Log rollout generations if enabled
+                rollout_data_dir = self.config.trainer.get("rollout_data_dir", None)
+                if rollout_data_dir:
+                    with marked_timer("dump_rollout_generations", timing_raw, color="green"):
+                        print(batch.batch.keys())
+                        inputs = self.tokenizer.batch_decode(batch.batch["prompts"], skip_special_tokens=True)
+                        outputs = self.tokenizer.batch_decode(batch.batch["responses"], skip_special_tokens=True)
+                        scores = batch.batch["token_level_scores"].sum(-1).cpu().tolist()
+                        self._dump_generations(
+                            inputs=inputs,
+                            outputs=outputs,
+                            scores=scores,
+                            reward_extra_infos_dict=reward_extra_infos_dict,
+                            dump_path=rollout_data_dir,
+                        )
+
+                # validate
+                if self.val_reward_fn is not None and self.config.trainer.test_freq > 0 and (
+                        is_last_step or self.global_steps % self.config.trainer.test_freq == 0):
+                    with marked_timer("testing", timing_raw, color="green"):
+                        val_metrics: dict = self._validate()
+                        if is_last_step:
+                            last_val_metrics = val_metrics
+                    metrics.update(val_metrics)
+
+                if self.config.trainer.save_freq > 0 and (
+                        is_last_step or self.global_steps % self.config.trainer.save_freq == 0):
+                    with marked_timer("save_checkpoint", timing_raw, color="green"):
+                        self._save_checkpoint()
+
+            # training metrics
+            metrics.update(
+                {
+                    "training/global_step": self.global_steps,
+                    "training/epoch": epoch,
+                }
+            )
+            # collect metrics
+            metrics.update(compute_data_metrics(batch=batch, use_critic=self.use_critic))
+            metrics.update(compute_timing_metrics(batch=batch, timing_raw=timing_raw))
+            # TODO: implement actual tflpo and theoretical tflpo
+            n_gpus = self.resource_pool_manager.get_n_gpus()
+            metrics.update(compute_throughout_metrics(batch=batch, timing_raw=timing_raw, n_gpus=n_gpus))
+
+            # TODO: make a canonical logger that supports various backend
+            logger.log(data=metrics, step=self.global_steps)
+
+            progress_bar.update(1)
+            self.global_steps += 1
+
+            if do_profile:
+                self.actor_wg.stop_profile()
+                if not self.hybrid_engine:
+                    self.rollout_wg.stop_profile()
+                if self.use_reference_policy:
+                    self.ref_policy_wg.stop_profile()
+                if self.use_critic:
+                    self.critic_wg.stop_profile()
+                if self.use_rm:
+                    self.rm_wg.stop_profile()
+
+            if is_last_step:
+                pprint(f"Final validation metrics: {last_val_metrics}")
+                progress_bar.close()
+                return

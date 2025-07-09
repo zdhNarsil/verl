@@ -134,7 +134,7 @@ python3 -m recipe.one_step_off_policy.async_main_ppo \
     trainer.test_freq=10 \
     trainer.save_freq=-1 \
     trainer.total_epochs=10 \
-    trainer.total_training_steps=100 \ssss
+    trainer.total_training_steps=100 \
     trainer.default_local_dir="${CKPTS_DIR}" \
     trainer.resume_mode=auto \
     trainer.log_val_generations=10

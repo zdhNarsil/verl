@@ -15,7 +15,7 @@ clip_ratio_low=0.2
 clip_ratio_high=0.28
 
 max_prompt_length=$((1024 * 2))
-max_response_length=$((1024 * 15))
+max_response_length=$((1024 * 8))
 enable_overlong_buffer=True
 overlong_buffer_len=$((1024 * 4))
 overlong_penalty_factor=1.0
@@ -55,7 +55,7 @@ ref_offload=True
 actor_offload=False
 gen_tp=2
 train_tp=2
-train_pp=1
+train_pp=2
 
 # TODO: support dynamic_bsz for megatron
 # actor_rollout_ref.actor.use_dynamic_bsz=${use_dynamic_bsz} \

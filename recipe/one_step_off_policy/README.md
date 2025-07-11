@@ -45,16 +45,19 @@ policy. Our core contributions include:
     - Training: 12 GPUs
 - **Model**: Qwen2.5-Math-7B
 - **Rollout Configuration**:
-- **Max Response Length**: 8,000 tokens
+- **Max Response Length**: FSDP2: 20,480 tokens; Megatron: 8,192 tokens
 - **Algorithm**: DAPO
 - **Rollout Engine**: vLLM
 
-| training mode          | engine        | step | gen | wait_prev_gen | generate_sequences | old_log_prob | update_actor | total time    | acc/best@32/mean | acc/maj@32/mean |
-|------------------------|---------------|------|-----|---------------|--------------------|--------------|--------------|---------------|------------------|-----------------|
-| colocate sync          | VLLM+FSDP2    | 749  | 321 | -             | 247                | 88           | 286          | 19h18m        | 0.5948           | 0.417           |
-| one-step-overlap async | VLLM+FSDP2    | 520  | -   | 45            | 458                | 108          | 337          | 15h34m（+23%）  | 0.6165           | 0.494           |
-| colocate sync          | VLLM+Megatron | 805  | 272 | -             | 234                | 125          | 379          | 20h41m        | 0.5830           | 0.3623          |
-| one-step-overlap async | VLLM+Megatron | 485  | -   | 41            | 437                | 110          | 313          | 13h1m  (+62%) | 0.5938           | 0.4359          |
+| training mode          | engine        | step | gen | wait_prev_gen | generate_sequences | old_log_prob | update_actor | total time     | acc/best@32/mean | acc/maj@32/mean |
+|------------------------|---------------|------|-----|---------------|--------------------|--------------|--------------|----------------|------------------|-----------------|
+| colocate sync          | VLLM+FSDP2    | 749  | 321 | -             | 247                | 88           | 286          | 19h18m         | 0.5948           | 0.417           |
+| one-step-overlap async | VLLM+FSDP2    | 520  | -   | 45            | 458                | 108          | 337          | 15h34m（+23%）   | 0.6165           | 0.494           |
+| colocate sync          | VLLM+Megatron | 670  | 209 | -             | 155                | 123          | 347          | 18h07m         | 0.5830           | 0.3623          |
+| one-step-overlap async | VLLM+Megatron | 485  | -   | 41            | 437                | 119          | 327          | 13h06m  (+38%) | 0.5938           | 0.4359          |
+
+* colocate sync: step = gen + old_log_prob + update_actor
+* one-step-overlap async: step = max(wait_prev_gen + generate_sequences, old_log_prob + update_actor)
 
 ## Implementation
 

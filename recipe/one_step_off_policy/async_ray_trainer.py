@@ -547,7 +547,7 @@ class AsyncRayPPOTrainer(RayPPOTrainer):
                 batch_keys=batch_keys_to_pop,
                 non_tensor_batch_keys=non_tensor_batch_keys_to_pop,
             )
-
+            gen_batch = gen_batch.repeat(repeat_times=self.config.actor_rollout_ref.rollout.n, interleave=True)
             # sync weights from actor to rollout
             self.sync_rollout_weights()
 

@@ -124,8 +124,13 @@ class RolloutWorker(ActorRolloutRefWorker):
                 world_size=world_size,
                 init_method=os.environ.get("DIST_INIT_METHOD", None),
             )
-
-        profiler_config = omega_conf_to_dataclass(config.rollout.get("profiler", {}), ProfilerConfig)
+        # TODO(haibin.lin):
+        # As of now the type of config is DictConfig, if we assign config.profiler with ProfilerConfig,
+        # it will actually convert the ProfilerConfig dataclass back to a DictConfig.
+        # We can still use ProfilerConfig for testing purpose (tests/utils/test_nvtx_profile.py)
+        # as they provides DictConfig-like interface
+        # The benefit of creating the dataclass config is to perform validation during __post_init__
+        profiler_config = omega_conf_to_dataclass(config.rollout.get("profiler", {}))
         DistProfilerExtension.__init__(self, DistProfiler(rank=self.rank, config=profiler_config))
         self._is_rollout = True
         self._is_actor = False

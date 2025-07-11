@@ -592,7 +592,8 @@ class AsyncRayPPOTrainer(RayPPOTrainer):
 
                 # asys next generation (with syns weights from actor to rollout)
                 with marked_timer("sync_rollout_weights", timing_raw, color="purple"):
-                    batch_data_future = async_gen_next_batch(continuous_iterator)
+                    if not is_last_step:
+                        batch_data_future = async_gen_next_batch(continuous_iterator)
 
                 batch.non_tensor_batch["uid"] = np.array(
                     [str(uuid.uuid4()) for _ in range(len(batch.batch))], dtype=object

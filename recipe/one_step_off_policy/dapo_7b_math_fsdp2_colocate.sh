@@ -23,7 +23,7 @@ overlong_penalty_factor=1.0
 loss_agg_mode="token-mean"
 
 train_prompt_bsz=512
-n_resp_per_prompt=16
+n_resp_per_prompt=12
 train_prompt_mini_bsz=32
 
 # Ray
@@ -39,7 +39,6 @@ MODEL_PATH=${MODEL_PATH:-"${RAY_DATA_HOME}/models/Qwen2.5-Math-7B"}
 CKPTS_DIR=${CKPTS_DIR:-"${RAY_DATA_HOME}/ckpts/${project_name}/${exp_name}"}
 TRAIN_FILE=${TRAIN_FILE:-"${RAY_DATA_HOME}/data/dapo-math-17k.parquet"}
 TEST_FILE=${TEST_FILE:-"${RAY_DATA_HOME}/data/aime-2024.parquet"}
-
 # Algorithm
 temperature=1.0
 top_p=1.0
@@ -70,6 +69,7 @@ python3 -m verl.trainer.main_ppo \
     algorithm.use_kl_in_reward=${use_kl_in_reward} \
     algorithm.kl_ctrl.kl_coef=${kl_coef} \
     actor_rollout_ref.actor.strategy=fsdp2 \
+    critic.strategy=fsdp2 \
     actor_rollout_ref.actor.use_kl_loss=${use_kl_loss} \
     actor_rollout_ref.actor.kl_loss_coef=${kl_loss_coef} \
     actor_rollout_ref.actor.clip_ratio_low=${clip_ratio_low} \

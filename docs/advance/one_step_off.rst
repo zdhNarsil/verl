@@ -3,7 +3,7 @@ One Step Off Policy Async Trainer
 
 **Author:**  `ZhengGang Hou <https://github.com/ArronHZG>`_, `Pu Wang <https://github.com/lalala-2>`_, `MinCong Huang <https://github.com/imh966>`_
 
-Last updated: 07/10/2025.
+Last updated: 07/11/2025.
 
 Introduction
 ------------

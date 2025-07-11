@@ -19,6 +19,9 @@ The more severe the long-tail problem in sample generation, the lower the overal
 For example, in DAPO 32B training, the Rollout phase accounts for approximately 70% of the total time,
 and increasing resources does not reduce the Rollout duration.
 
+![DAPO 32B Math Performance](https://raw.githubusercontent.com/eric-haibin-lin/verl-community/refs/heads/main/docs/dapo_32b_math.png)
+> source data: https://wandb.ai/verl-org/DAPO%20Reproduction%20on%20verl/workspace?nw=nwusertongyuxuan361
+
 ### Solution
 
 We have implemented the **One Step Off Async Trainer** to help alleviate this issue. This approach parallelizes the
@@ -26,7 +29,12 @@ generation and training processes, utilizing samples generated in the previous s
 It also involves appropriately partitioning resources, allocating dedicated resources for generation while automatically
 assigning the remainder to training. By reducing resources allocated to the generation phase, we mitigate GPU idle time
 during long-tail sample generation. Throughout this process, generation and training parameters maintain a one-step off
-policy. Our core contributions include:
+policy.
+
+![One Step Off Policy Diagram](https://raw.githubusercontent.com/eric-haibin-lin/verl-community/refs/heads/main/docs/one_step_off_policy.png)
+> reference: [AReaL: A Large-Scale Asynchronous Reinforcement Learning System for Language Reasoning](https://arxiv.org/abs/2505.24298)
+
+Our core contributions include:
 
 1. **Parallel Generation and Training**:  
    Samples for the next batch are asynchronously generated while the current batch is being trained.
@@ -49,15 +57,20 @@ policy. Our core contributions include:
 - **Algorithm**: DAPO
 - **Rollout Engine**: vLLM
 
-| training mode          | engine        | step | gen | wait_prev_gen | generate_sequences | old_log_prob | update_actor | total time     | acc/best@32/mean | acc/maj@32/mean |
-|------------------------|---------------|------|-----|---------------|--------------------|--------------|--------------|----------------|------------------|-----------------|
-| colocate sync          | VLLM+FSDP2    | 749  | 321 | -             | 247                | 88           | 286          | 19h18m         | 0.5948           | 0.417           |
-| one-step-overlap async | VLLM+FSDP2    | 520  | -   | 45            | 458                | 108          | 337          | 15h34m（+23%）   | 0.6165           | 0.494           |
-| colocate sync          | VLLM+Megatron | 670  | 209 | -             | 155                | 123          | 347          | 18h07m         | 0.5830           | 0.3623          |
-| one-step-overlap async | VLLM+Megatron | 485  | -   | 41            | 437                | 119          | 327          | 13h06m  (+38%) | 0.5938           | 0.4359          |
+| training mode          | engine        | step | gen | wait_prev_gen | generate_sequences | old_log_prob | update_actor | total time    | acc/best@32/mean | acc/maj@32/mean |
+|------------------------|---------------|------|-----|---------------|--------------------|--------------|--------------|---------------|------------------|-----------------|
+| colocate sync          | VLLM+FSDP2    | 749  | 321 | -             | 247                | 88           | 286          | 19h18m        | 0.5948           | 0.417           |
+| one-step-overlap async | VLLM+FSDP2    | 520  | -   | 45            | 458                | 108          | 337          | 15h34m（+23%）  | 0.6165           | 0.494           |
+| colocate sync          | VLLM+Megatron | 699  | 207 | -             | 162                | 119          | 344          | 18h21m        | 0.605            | 0.4217          |
+| one-step-overlap async | VLLM+Megatron | 566  | -   | 59            | 501                | 120          | 347          | 13h06m (+40%) | 0.6569           | 0.4038          |
 
 * colocate sync: step = gen + old_log_prob + update_actor
 * one-step-overlap async: step = max(wait_prev_gen + generate_sequences, old_log_prob + update_actor)
+
+
+![One Step Off Megatron Performance](https://raw.githubusercontent.com/eric-haibin-lin/verl-community/refs/heads/main/docs/one_step_off_megatron.png)
+
+> source data: https://wandb.ai/hou-zg-meituan/one-step-off-policy?nw=nwuserhouzg
 
 ## Implementation
 

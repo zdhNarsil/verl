@@ -32,7 +32,8 @@ during long-tail sample generation. Throughout this process, generation and trai
 policy.
 
 ![One Step Off Policy Diagram](https://raw.githubusercontent.com/eric-haibin-lin/verl-community/refs/heads/main/docs/one_step_off_policy.png)
-> reference: [AReaL: A Large-Scale Asynchronous Reinforcement Learning System for Language Reasoning](https://arxiv.org/abs/2505.24298)
+>
+reference: [AReaL: A Large-Scale Asynchronous Reinforcement Learning System for Language Reasoning](https://arxiv.org/abs/2505.24298)
 
 Our core contributions include:
 
@@ -66,7 +67,6 @@ Our core contributions include:
 
 * colocate sync: step = gen + old_log_prob + update_actor
 * one-step-overlap async: step = max(wait_prev_gen + generate_sequences, old_log_prob + update_actor)
-
 
 ![One Step Off Megatron Performance](https://raw.githubusercontent.com/eric-haibin-lin/verl-community/refs/heads/main/docs/one_step_off_megatron.png)
 

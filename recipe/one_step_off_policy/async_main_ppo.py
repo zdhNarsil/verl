@@ -28,9 +28,11 @@ from verl.trainer.ppo.reward import load_reward_manager
 
 from .async_ray_trainer import AsyncRayPPOTrainer
 
+
 @hydra.main(config_path="config", config_name="async_ppo_trainer", version_base=None)
 def main(config):
     run_ppo(config)
+
 
 # Define a function to run the PPO-like training process
 def run_ppo(config) -> None:

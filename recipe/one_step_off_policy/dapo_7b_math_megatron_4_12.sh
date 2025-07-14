@@ -64,7 +64,7 @@ train_pp=2
 # actor_rollout_ref.ref.log_prob_max_token_len_per_gpu=${infer_ppo_max_token_len} \
 # actor_rollout_ref.rollout.log_prob_max_token_len_per_gpu=${infer_ppo_max_token_len} \
 
-/home/hadoop-djst-algoplat/miniconda3/bin/python -m recipe.one_step_off_policy.async_main_ppo \
+python3 -m recipe.one_step_off_policy.async_main_ppo \
     --config-path=config \
     --config-name='async_ppo_megatron_trainer.yaml' \
     data.train_files="${TRAIN_FILE}" \

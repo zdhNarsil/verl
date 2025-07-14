@@ -186,9 +186,7 @@ class RolloutWorker(ActorRolloutRefWorker):
         rollout_name = self.config.rollout.name
         assert rollout_name == "vllm"
 
-        from verl.workers.rollout.vllm_rollout import vllm_mode, vLLMRollout
-
-        assert vllm_mode == "spmd"
+        from verl.workers.rollout.vllm_rollout import vLLMRollout
 
         log_gpu_memory_usage(f"Before building {rollout_name} rollout", logger=logger)
 

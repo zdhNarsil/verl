@@ -166,185 +166,16 @@ class AsyncRayPPOTrainer(RayPPOTrainer):
             AdvantageEstimator.RLOO,
             AdvantageEstimator.OPO,
             AdvantageEstimator.REINFORCE_PLUS_PLUS_BASELINE,
+            AdvantageEstimator.GPG,
         ]:
             self.use_critic = False
         else:
             raise NotImplementedError
 
-        self._validate_config()
-        self._create_dataloader(train_dataset, val_dataset, collate_fn, train_sampler)
-
-    def _validate_config(self):
-        config = self.config
-        # number of GPUs total
         n_gpus = config.trainer.n_gpus_per_node * config.trainer.nnodes
-        n_gpus_actor = (
-            n_gpus if config.actor_rollout_ref.hybrid_engine else n_gpus - config.actor_rollout_ref.rollout.n_gpus
-        )
-        if config.actor_rollout_ref.actor.strategy == "megatron":
-            model_parallel_size = (
-                config.actor_rollout_ref.actor.megatron.tensor_model_parallel_size
-                * config.actor_rollout_ref.actor.megatron.pipeline_model_parallel_size
-            )
-            assert (
-                n_gpus_actor % (model_parallel_size * config.actor_rollout_ref.actor.megatron.context_parallel_size)
-                == 0
-            ), (
-                f"n_gpus_actor ({n_gpus_actor}) must be divisible by model_parallel_size ({model_parallel_size}) "
-                f"times context_parallel_size ({config.actor_rollout_ref.actor.megatron.context_parallel_size}) ."
-            )
-            megatron_dp = n_gpus_actor // (
-                model_parallel_size * config.actor_rollout_ref.actor.megatron.context_parallel_size
-            )
-            minimal_bsz = megatron_dp * config.actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu
-        else:
-            minimal_bsz = n_gpus_actor
-
-        # 1. Check total batch size for data correctness
-        real_train_batch_size = config.data.train_batch_size * config.actor_rollout_ref.rollout.n
-        assert real_train_batch_size % minimal_bsz == 0, (
-            f"real_train_batch_size ({real_train_batch_size}) must be divisible "
-            f"by minimal possible batch size ({minimal_bsz})",
-        )
-
-        # A helper function to check "micro_batch_size" vs "micro_batch_size_per_gpu"
-        # We throw an error if the user sets both. The new convention is "..._micro_batch_size_per_gpu".
-        def check_mutually_exclusive(mbs, mbs_per_gpu, name: str):
-            settings = {
-                "actor_rollout_ref.actor": "micro_batch_size",
-                "critic": "micro_batch_size",
-                "reward_model": "micro_batch_size",
-                "actor_rollout_ref.ref": "log_prob_micro_batch_size",
-                "actor_rollout_ref.rollout": "log_prob_micro_batch_size",
-            }
-
-            if name in settings:
-                param = settings[name]
-                param_per_gpu = f"{param}_per_gpu"
-
-                if mbs is None and mbs_per_gpu is None:
-                    raise ValueError(
-                        f"[{name}] Please set at least one of '{name}.{param}' or '{name}.{param_per_gpu}'."
-                    )
-
-                if mbs is not None and mbs_per_gpu is not None:
-                    raise ValueError(
-                        f"[{name}] You have set both '{name}.{param}' AND '{name}.{param_per_gpu}'. "
-                        f"Please remove '{name}.{param}' because only '*_{param_per_gpu}' "
-                        "is supported (the former is deprecated)."
-                    )
-
-        if not config.actor_rollout_ref.actor.use_dynamic_bsz:
-            # actor: ppo_micro_batch_size vs. ppo_micro_batch_size_per_gpu
-            check_mutually_exclusive(
-                config.actor_rollout_ref.actor.ppo_micro_batch_size,
-                config.actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu,
-                "actor_rollout_ref.actor",
-            )
-
-            if self.use_reference_policy:
-                # reference: log_prob_micro_batch_size vs. log_prob_micro_batch_size_per_gpu
-                check_mutually_exclusive(
-                    config.actor_rollout_ref.ref.log_prob_micro_batch_size,
-                    config.actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu,
-                    "actor_rollout_ref.ref",
-                )
-
-            #  The rollout section also has log_prob_micro_batch_size vs. log_prob_micro_batch_size_per_gpu
-            check_mutually_exclusive(
-                config.actor_rollout_ref.rollout.log_prob_micro_batch_size,
-                config.actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu,
-                "actor_rollout_ref.rollout",
-            )
-
-        if self.use_critic and not config.critic.use_dynamic_bsz:
-            # Check for critic micro-batch size conflicts
-            check_mutually_exclusive(
-                config.critic.ppo_micro_batch_size, config.critic.ppo_micro_batch_size_per_gpu, "critic"
-            )
-
-        # Check for reward model micro-batch size conflicts
-        if config.reward_model.enable and not config.reward_model.use_dynamic_bsz:
-            check_mutually_exclusive(
-                config.reward_model.micro_batch_size, config.reward_model.micro_batch_size_per_gpu, "reward_model"
-            )
-
-        # Actor
-        # check if train_batch_size is larger than ppo_mini_batch_size
-        # if NOT dynamic_bsz, we must ensure:
-        #    ppo_mini_batch_size is divisible by ppo_micro_batch_size
-        #    ppo_micro_batch_size * sequence_parallel_size >= n_gpus
-        if not config.actor_rollout_ref.actor.use_dynamic_bsz:
-            assert config.data.train_batch_size >= config.actor_rollout_ref.actor.ppo_mini_batch_size
-            sp_size = config.actor_rollout_ref.actor.get("ulysses_sequence_parallel_size", 1)
-            if config.actor_rollout_ref.actor.ppo_micro_batch_size is not None:
-                assert (
-                    config.actor_rollout_ref.actor.ppo_mini_batch_size
-                    % config.actor_rollout_ref.actor.ppo_micro_batch_size
-                    == 0
-                )
-                assert config.actor_rollout_ref.actor.ppo_micro_batch_size * sp_size >= n_gpus_actor
-
-        assert config.actor_rollout_ref.actor.loss_agg_mode in [
-            "token-mean",
-            "seq-mean-token-sum",
-            "seq-mean-token-mean",
-            "seq-mean-token-sum-norm",
-        ], f"Invalid loss_agg_mode: {config.actor_rollout_ref.actor.loss_agg_mode}"
-
-        if config.algorithm.use_kl_in_reward and config.actor_rollout_ref.actor.use_kl_loss:
-            print("NOTICE: You have both enabled in-reward kl and kl loss.")
-
-        # critic
-        if self.use_critic and not config.critic.use_dynamic_bsz:
-            assert config.data.train_batch_size >= config.critic.ppo_mini_batch_size
-            sp_size = config.critic.get("ulysses_sequence_parallel_size", 1)
-            if config.critic.ppo_micro_batch_size is not None:
-                assert config.critic.ppo_mini_batch_size % config.critic.ppo_micro_batch_size == 0
-                assert config.critic.ppo_micro_batch_size * sp_size >= n_gpus_actor
-
-        # Check if use_remove_padding is enabled when using sequence parallelism for fsdp
-        if config.actor_rollout_ref.actor.strategy == "fsdp" and (
-            config.actor_rollout_ref.actor.get("ulysses_sequence_parallel_size", 1) > 1
-            or config.actor_rollout_ref.ref.get("ulysses_sequence_parallel_size", 1) > 1
-        ):
-            assert config.actor_rollout_ref.model.use_remove_padding, (
-                "When using sequence parallelism for actor/ref policy, you must enable `use_remove_padding`.",
-            )
-
-        if self.use_critic and config.critic.strategy == "fsdp":
-            if config.critic.get("ulysses_sequence_parallel_size", 1) > 1:
-                assert config.critic.model.use_remove_padding, (
-                    "When using sequence parallelism for critic, you must enable `use_remove_padding`.",
-                )
-
-        if config.data.get("val_batch_size", None) is not None:
-            print(
-                "WARNING: val_batch_size is deprecated."
-                + " Validation datasets are sent to inference engines as a whole batch,"
-                + " which will schedule the memory themselves."
-            )
-
-        # check eval config
-        if config.actor_rollout_ref.rollout.val_kwargs.do_sample:
-            assert config.actor_rollout_ref.rollout.temperature > 0, (
-                "validation gen temperature should be greater than 0 when enabling do_sample"
-            )
-
-        # check multi_turn with tool config
-        if config.actor_rollout_ref.rollout.multi_turn.enable:
-            assert (
-                config.actor_rollout_ref.rollout.multi_turn.tool_config_path is not None
-                or config.actor_rollout_ref.rollout.multi_turn.interaction_config_path is not None
-            ), (
-                "tool_config_path or interaction_config_path must be set "
-                "when enabling multi_turn with tool, due to no role-playing support"
-            )
-            assert config.algorithm.adv_estimator in [AdvantageEstimator.GRPO], (
-                "only GRPO is tested for multi-turn with tool"
-            )
-
-        print("[validate_config] All configuration checks passed successfully!")
+        n_gpus_actor = n_gpus - config.actor_rollout_ref.rollout.n_gpus
+        self._validate_config(n_gpus_actor)
+        self._create_dataloader(train_dataset, val_dataset, collate_fn, train_sampler)
 
     def _validate(self):
         self.actor_rollout_wg = self.rollout_wg
@@ -383,7 +214,10 @@ class AsyncRayPPOTrainer(RayPPOTrainer):
         if self.use_reference_policy:
             resource_pool = self.resource_pool_manager.get_resource_pool(Role.RefPolicy)
             ref_policy_cls = RayClassWithInitArgs(
-                self.role_worker_mapping[Role.RefPolicy], config=self.config.actor_rollout_ref, role="ref"
+                self.role_worker_mapping[Role.RefPolicy],
+                config=self.config.actor_rollout_ref,
+                role="ref",
+                profile_option=self.config.trainer.npu_profile.options,
             )
             self.resource_pool_to_cls[resource_pool]["ref"] = ref_policy_cls
 

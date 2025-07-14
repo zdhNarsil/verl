@@ -28,9 +28,11 @@ from verl.trainer.ppo.reward import load_reward_manager
 
 from .async_ray_trainer import AsyncRayPPOTrainer
 
+
 @hydra.main(config_path="config", config_name="async_ppo_trainer", version_base=None)
 def main(config):
     run_ppo(config)
+
 
 # Define a function to run the PPO-like training process
 def run_ppo(config) -> None:
@@ -110,8 +112,8 @@ class TaskRunner:
                     raise NotImplementedError("PPO LoRA is not supported before vllm 0.7.3")
 
         # Define worker classes based on the actor strategy.
-        if config.actor_rollout_ref.actor.strategy in ["fsdp2"]:
-            assert config.critic.strategy in ["fsdp2"]
+        if config.actor_rollout_ref.actor.strategy == "fsdp2":
+            assert config.actor_rollout_ref.actor.strategy == config.critic.strategy
             from verl.single_controller.ray import RayWorkerGroup
 
             from .async_fsdp_workers import (

@@ -6,7 +6,7 @@ set -xeuo pipefail
 # to ensure the asynchronous training mechanism works correctly
 
 NUM_GPUS=${NUM_GPUS:-8}
-STRATEGY=${STRATEGY:-"fsdp2"}  # fsdp2 or megatron
+ACTOR_STRATEGY=${ACTOR_STRATEGY:-"fsdp2"}  # fsdp2 or megatron
 
 # Download model if not exists
 MODEL_ID=${MODEL_ID:-Qwen/Qwen2.5-0.5B-Instruct}
@@ -48,9 +48,9 @@ val_top_p=0.7
 n_gpus_rollout=2
 n_gpus_training=$((NUM_GPUS - n_gpus_rollout))
 
-exp_name="$(basename "${MODEL_ID,,}")-one-step-off-policy-${STRATEGY}-minimal"
+exp_name="$(basename "${MODEL_ID,,}")-one-step-off-policy-${ACTOR_STRATEGY}-minimal"
 
-echo "Running one_step_off_policy with ${STRATEGY} strategy"
+echo "Running one_step_off_policy with ${ACTOR_STRATEGY} strategy"
 echo "Total GPUs: ${NUM_GPUS}, Rollout GPUs: ${n_gpus_rollout}, Training GPUs: ${n_gpus_training}"
 
 # Common parameters for both FSDP2 and Megatron
@@ -110,7 +110,7 @@ common_params=(
     trainer.resume_mode=disable
 )
 
-if [ "${STRATEGY}" == "fsdp2" ]; then
+if [ "${ACTOR_STRATEGY}" == "fsdp2" ]; then
     echo "Running with FSDP2 strategy..."
     # FSDP2 specific parameters
     gen_tp=2
@@ -136,7 +136,7 @@ if [ "${STRATEGY}" == "fsdp2" ]; then
         actor_rollout_ref.ref.ulysses_sequence_parallel_size=${sp_size} \
         actor_rollout_ref.actor.fsdp_config.fsdp_size=${fsdp_size} $@
 
-elif [ "${STRATEGY}" == "megatron" ]; then
+elif [ "${ACTOR_STRATEGY}" == "megatron" ]; then
     echo "Running with Megatron strategy..."
     # Megatron specific parameters
     gen_tp=2
@@ -164,8 +164,8 @@ elif [ "${STRATEGY}" == "megatron" ]; then
         actor_rollout_ref.ref.megatron.tensor_model_parallel_size=${train_tp} \
         actor_rollout_ref.ref.megatron.param_offload=${ref_offload} $@
 else
-    echo "Error: Unknown strategy ${STRATEGY}. Please use 'fsdp2' or 'megatron'"
+    echo "Error: Unknown strategy ${ACTOR_STRATEGY}. Please use 'fsdp2' or 'megatron'"
     exit 1
 fi
 
-echo "One-step-off-policy E2E test completed successfully with ${STRATEGY} strategy"
+echo "One-step-off-policy E2E test completed successfully with ${ACTOR_STRATEGY} strategy"

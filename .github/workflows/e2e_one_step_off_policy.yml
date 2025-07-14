@@ -94,7 +94,7 @@ jobs:
       NO_PROXY: "localhost,127.0.0.1,hf-mirror.com"
       HF_ENDPOINT: "https://hf-mirror.com"
       HF_HUB_ENABLE_HF_TRANSFER: "0" # This is more stable
-      STRATEGY: "fsdp2"
+      ACTOR_STRATEGY: "fsdp2"
     container:
       image: verlai/verl:app-verl0.4-vllm0.8.5-mcore0.12.1
       options: --gpus all --shm-size=10g
@@ -123,7 +123,7 @@ jobs:
       NO_PROXY: "localhost,127.0.0.1,hf-mirror.com"
       HF_ENDPOINT: "https://hf-mirror.com"
       HF_HUB_ENABLE_HF_TRANSFER: "0" # This is more stable
-      STRATEGY: "megatron"
+      ACTOR_STRATEGY: "megatron"
     container:
       image: verlai/verl:app-verl0.4-vllm0.8.5-mcore0.12.1
       options: --gpus all --shm-size=10g

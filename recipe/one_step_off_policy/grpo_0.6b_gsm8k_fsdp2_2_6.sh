@@ -20,6 +20,7 @@ python3 -m recipe.one_step_off_policy.async_main_ppo \
     data.filter_overlong_prompts=True \
     data.truncation='error' \
     actor_rollout_ref.actor.strategy=fsdp2 \
+    critic.strategy=fsdp2 \
     actor_rollout_ref.model.path="${MODEL_PATH}" \
     actor_rollout_ref.actor.optim.lr=1e-6 \
     actor_rollout_ref.hybrid_engine=False \

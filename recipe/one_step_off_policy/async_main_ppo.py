@@ -110,8 +110,8 @@ class TaskRunner:
                     raise NotImplementedError("PPO LoRA is not supported before vllm 0.7.3")
 
         # Define worker classes based on the actor strategy.
-        if config.actor_rollout_ref.actor.strategy in ["fsdp2"]:
-            assert config.critic.strategy in ["fsdp2"]
+        if config.actor_rollout_ref.actor.strategy == "fsdp2":
+            assert config.actor_rollout_ref.actor.strategy == config.critic.strategy
             from verl.single_controller.ray import RayWorkerGroup
 
             from .async_fsdp_workers import (

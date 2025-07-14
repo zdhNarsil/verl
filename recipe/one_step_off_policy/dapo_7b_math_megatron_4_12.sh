@@ -40,7 +40,6 @@ MODEL_PATH=${MODEL_PATH:-"${RAY_DATA_HOME}/models/Qwen2.5-Math-7B"}
 CKPTS_DIR=${CKPTS_DIR:-"${RAY_DATA_HOME}/ckpts/${project_name}/${exp_name}"}
 TRAIN_FILE=${TRAIN_FILE:-"${RAY_DATA_HOME}/data/dapo-math-17k.parquet"}
 TEST_FILE=${TEST_FILE:-"${RAY_DATA_HOME}/data/aime-2024.parquet"}
-
 # Algorithm
 temperature=1.0
 top_p=1.0
@@ -65,7 +64,7 @@ train_pp=2
 # actor_rollout_ref.ref.log_prob_max_token_len_per_gpu=${infer_ppo_max_token_len} \
 # actor_rollout_ref.rollout.log_prob_max_token_len_per_gpu=${infer_ppo_max_token_len} \
 
-python3 -m recipe.one_step_off_policy.async_main_ppo \
+/home/hadoop-djst-algoplat/miniconda3/bin/python -m recipe.one_step_off_policy.async_main_ppo \
     --config-path=config \
     --config-name='async_ppo_megatron_trainer.yaml' \
     data.train_files="${TRAIN_FILE}" \
@@ -79,6 +78,8 @@ python3 -m recipe.one_step_off_policy.async_main_ppo \
     algorithm.adv_estimator=${adv_estimator} \
     algorithm.use_kl_in_reward=${use_kl_in_reward} \
     algorithm.kl_ctrl.kl_coef=${kl_coef} \
+    actor_rollout_ref.actor.strategy=megatron \
+    critic.strategy=megatron \
     actor_rollout_ref.actor.use_kl_loss=${use_kl_loss} \
     actor_rollout_ref.actor.kl_loss_coef=${kl_loss_coef} \
     actor_rollout_ref.actor.clip_ratio_low=${clip_ratio_low} \

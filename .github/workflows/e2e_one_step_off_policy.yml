@@ -42,7 +42,9 @@ on:
       - main
       - v0.*
     paths:
-      - "verl/*.py"
+      - "**/*.py"
+      - "!**/*.md"
+      - "!**/*.sh"
       # Other entrypoints
       - "!examples/*trainer*"
       - "!tests/**"
@@ -56,6 +58,8 @@ on:
       - v0.*
     paths:
       - "**/*.py"
+      - "!**/*.md"
+      - "!**/*.sh"
       # Other entrypoints
       - "!examples/**"
       - "!tests/**"

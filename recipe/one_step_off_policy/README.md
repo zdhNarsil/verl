@@ -1,9 +1,8 @@
 # Recipe: One Step Off Policy Async Trainer
 
-**Author:**  `ZhengGang Hou <https://github.com/ArronHZG>` `Pu Wang <https://github.com/lalala-2>`
-`MinCong Huang <https://github.com/imh966>`
+**Author:**  `https://github.com/meituan-search>`
 
-Last updated: 07/14/2025.
+Last updated: 07/15/2025.
 
 ## Introduction
 

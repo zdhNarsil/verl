@@ -15,7 +15,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """
-FSDP PPO Trainer with Ray-based single controller.
 This trainer supports model-agonistic model initialization with huggingface
 """
 
@@ -565,7 +564,6 @@ class AsyncRayPPOTrainer(RayPPOTrainer):
                 rollout_data_dir = self.config.trainer.get("rollout_data_dir", None)
                 if rollout_data_dir:
                     with marked_timer("dump_rollout_generations", timing_raw, color="green"):
-                        print(batch.batch.keys())
                         inputs = self.tokenizer.batch_decode(batch.batch["prompts"], skip_special_tokens=True)
                         outputs = self.tokenizer.batch_decode(batch.batch["responses"], skip_special_tokens=True)
                         scores = batch.batch["token_level_scores"].sum(-1).cpu().tolist()

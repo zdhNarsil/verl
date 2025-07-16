@@ -269,13 +269,23 @@ python3 -m recipe.one_step_off_policy.async_main_ppo \
         - High `wait_prev_gen` + long-tail sequences → Optimize stopping criteria (resource increase won't help)
    > **wait_prev_gen**：The time consumed waiting for the previous rollout to end (the part that is not fully
    overlapped).
-
+   **Resource Configuration Strategies:**
+    - **Resource-constrained scenario**: Optimize resource utilization by adjusting GPU allocation ratios,
+      keeping the number of nodes equal to allow training and rollout to share nodes;
+        - Configure `trainer.nnodes = rollout.nnodes` with
+          `trainer.n_gpus_per_node + rollout.n_gpus_per_node = physical_gpus_per_node`. Control rollout resource
+          allocation by adjusting `n_gpus_per_node`.
+    - **Resource-abundant scenario**: Optimize performance by adjusting the number of nodes,
+      keeping the number of GPUs per node equal to enable independent scaling of training and rollout
+      parallelism.
+        - Configure `trainer.n_gpus_per_node = rollout.n_gpus_per_node` and control rollout resource allocation by
+          adjusting `trainer.nnodes` and `rollout.nnodes`to achieve optimal performance.
    > **Note**: The total number of nodes required by the system is not simply `trainer.nnodes + rollout.nnodes`. The
-   actual calculation depends on GPU capacity:
+   > actual calculation depends on GPU capacity:
    > - When `trainer.n_gpus_per_node + rollout.n_gpus_per_node <= physical_gpus_per_node`,
-       >   the required node count is `max(trainer.nnodes, rollout.nnodes)`
+       > the required node count is `max(trainer.nnodes, rollout.nnodes)`
    > - When `trainer.n_gpus_per_node + rollout.n_gpus_per_node > physical_gpus_per_node`,
-       >   the required node count is `trainer.nnodes + rollout.nnodes`
+       > the required node count is `trainer.nnodes + rollout.nnodes`
 
 ## Functional Support
 

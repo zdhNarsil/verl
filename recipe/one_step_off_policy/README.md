@@ -2,7 +2,7 @@
 
 **Author:**  `https://github.com/meituan-search>`
 
-Last updated: 07/15/2025.
+Last updated: 07/16/2025.
 
 ## Introduction
 
@@ -222,8 +222,11 @@ python3 -m recipe.one_step_off_policy.async_main_ppo \
     actor_rollout_ref.actor.strategy=fsdp2 \
     # actor and rollout are placed separately
     actor_rollout_ref.hybrid_engine=False \
-    # the number of gpu occupied by rollout
-    actor_rollout_ref.rollout.n_gpus=4
+    # actor and rollout resource
+    trainer.nnodes=1 \
+    trainer.n_gpus_per_node=6 \
+    rollout.nnodes=1 \
+    rollout.n_gpus_per_node= 2
 ```
 
 ### Megatron Configuration Example
@@ -235,24 +238,27 @@ python3 -m recipe.one_step_off_policy.async_main_ppo \
     actor_rollout_ref.actor.strategy=megatron \
     # actor and rollout are placed separately
     actor_rollout_ref.hybrid_engine=False \
-    # the number of gpu occupied by rollout
-    actor_rollout_ref.rollout.n_gpus=4
+    # actor and rollout resource
+    trainer.nnodes=1 \
+    trainer.n_gpus_per_node=6 \
+    rollout.nnodes=1 \
+    rollout.n_gpus_per_node= 2
 ```
 
 ### Configuration Guidelines
 
 1. **Card Number Relationships**  
    Maintain either of these relationships for optimal batch distribution:
-    - `actor_rollout_ref.rollout.n_gpus` should be an integer divisor of:  
-      `trainer.n_gpus_per_node * trainer.nnodes - actor_rollout_ref.rollout.n_gpus`
+    - `actor_rollout_ref.rollout.n` should be an integer divisor of:  
+      `trainer.n_gpus_per_node * trainer.nnodes`
     - `actor_rollout_ref.rollout.n * data.train_batch_size` should be evenly divisible by:  
-      `trainer.n_gpus_per_node * trainer.nnodes - actor_rollout_ref.rollout.n_gpus`
+      `trainer.n_gpus_per_node * trainer.nnodes`
 
    > Rationale: Ensures training samples can be evenly distributed across training GPUs when using partial resources for
    generation.
 
 2. **Dynamic Resource Tuning**  
-   Adjust `actor_rollout_ref.rollout.n_gpus` based on phase durations:
+   Adjust `trainer.nnodes` `trainer.n_gpus_per_node` `rollout.nnodes` `rollout.n_gpus_per_node` based on phase durations:
     - **Ideal state**: Rollout and training phases have comparable durations
     - **Diagnostic metrics**:
         - Monitor `wait_prev_gen` duration
@@ -262,6 +268,12 @@ python3 -m recipe.one_step_off_policy.async_main_ppo \
         - High `wait_prev_gen` + long-tail sequences → Optimize stopping criteria (resource increase won't help)
    > **wait_prev_gen**：The time consumed waiting for the previous rollout to end (the part that is not fully
    overlapped).
+
+   > **Note**: The total number of nodes required by the system is not simply `trainer.nnodes + rollout.nnodes`. The actual calculation depends on GPU capacity:
+   > - When `trainer.n_gpus_per_node + rollout.n_gpus_per_node <= physical_gpus_per_node`,
+   >   the required node count is `max(trainer.nnodes, rollout.nnodes)`
+   > - When `trainer.n_gpus_per_node + rollout.n_gpus_per_node > physical_gpus_per_node`,
+   >   the required node count is `trainer.nnodes + rollout.nnodes`
 
 ## Functional Support
 

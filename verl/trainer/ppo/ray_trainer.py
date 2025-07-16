@@ -385,11 +385,10 @@ class RayPPOTrainer:
         self._validate_config()
         self._create_dataloader(train_dataset, val_dataset, collate_fn, train_sampler)
 
-    def _validate_config(self, n_gpus=None):
+    def _validate_config(self):
         config = self.config
         # number of GPUs total
-        if not n_gpus:
-            n_gpus = config.trainer.n_gpus_per_node * config.trainer.nnodes
+        n_gpus = config.trainer.n_gpus_per_node * config.trainer.nnodes
         if config.actor_rollout_ref.actor.strategy == "megatron":
             model_parallel_size = (
                 config.actor_rollout_ref.actor.megatron.tensor_model_parallel_size

@@ -33,6 +33,10 @@ train_prompt_mini_bsz=32
 # RUNTIME_ENV=${RUNTIME_ENV:-"${WORKING_DIR}/verl/trainer/runtime_env.yaml"}
 NNODES=${NNODES:-2}
 NGPUS_PER_NODE=${NGPUS_PER_NODE:-8}
+
+n_gpus_rollout=2
+n_gpus_training=$((NGPUS_PER_NODE - n_gpus_rollout))
+
 # Paths
 RAY_DATA_HOME=${RAY_DATA_HOME:-"${HOME}/verl"}
 # very important! please modify the max_position_embeddings in config.json to 32768 after downloading from huggingface
@@ -138,4 +142,8 @@ python3 -m recipe.one_step_off_policy.async_main_ppo \
     trainer.total_training_steps=100 \
     trainer.default_local_dir="${CKPTS_DIR}" \
     trainer.resume_mode=auto \
-    trainer.log_val_generations=10
+    trainer.log_val_generations=10 \
+    trainer.nnodes="${NNODES}" \
+    trainer.n_gpus_per_node="${n_gpus_training}" \
+    rollout.nnodes="${NNODES}" \
+    rollout.n_gpus_per_node="${n_gpus_rollout}"

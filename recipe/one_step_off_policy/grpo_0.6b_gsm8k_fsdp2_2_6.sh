@@ -10,6 +10,13 @@ CKPTS_DIR=${CKPTS_DIR:-"${RAY_DATA_HOME}/ckpts/${project_name}/${exp_name}"}
 TRAIN_FILE=${TRAIN_FILE:-"${RAY_DATA_HOME}/data/gsm8k/train.parquet"}
 TEST_FILE=${TEST_FILE:-"${RAY_DATA_HOME}/data/gsm8k/test.parquet"}
 
+NNODES=${NNODES:-1}
+NGPUS_PER_NODE=${NGPUS_PER_NODE:-8}
+
+n_gpus_rollout=2
+n_gpus_training=$((NGPUS_PER_NODE - n_gpus_rollout))
+
+
 python3 -m recipe.one_step_off_policy.async_main_ppo \
     algorithm.adv_estimator=grpo \
     data.train_files="${TRAIN_FILE}" \
@@ -39,7 +46,6 @@ python3 -m recipe.one_step_off_policy.async_main_ppo \
     actor_rollout_ref.rollout.name=vllm \
     actor_rollout_ref.rollout.gpu_memory_utilization=0.6 \
     actor_rollout_ref.rollout.n=5 \
-    actor_rollout_ref.rollout.n_gpus=2 \
     actor_rollout_ref.rollout.load_format=safetensors \
     actor_rollout_ref.rollout.layered_summon=True \
     actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=32 \
@@ -50,8 +56,10 @@ python3 -m recipe.one_step_off_policy.async_main_ppo \
     trainer.logger=['console','tensorboard'] \
     trainer.project_name="${project_name}" \
     trainer.experiment_name="${exp_name}" \
-    trainer.n_gpus_per_node=8 \
-    trainer.nnodes=1 \
     trainer.save_freq=-1 \
     trainer.test_freq=5 \
-    trainer.total_epochs=2 $@
+    trainer.total_epochs=2 \
+    trainer.nnodes="${NNODES}" \
+    trainer.n_gpus_per_node="${n_gpus_training}" \
+    rollout.nnodes="${NNODES}" \
+    rollout.n_gpus_per_node="${n_gpus_rollout}"

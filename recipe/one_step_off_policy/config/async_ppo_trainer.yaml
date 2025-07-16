@@ -6,10 +6,9 @@ defaults:
   - ppo_trainer
   - _self_
 
-
-actor_rollout_ref:
-  hybrid_engine: false
-  rollout:
-    
-    # the number of gpu for rollout model
-    n_gpus: 4
+# config for the rollout (only for resource isolation)
+rollout:
+  # Number of nodes used in the rollout
+  nnodes: 1
+  # Number of GPUs per node
+  n_gpus_per_node: 8

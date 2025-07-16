@@ -146,20 +146,15 @@ class TaskRunner:
         }
 
         global_pool_id = "actor_pool"
-        n_gpus = config.trainer.n_gpus_per_node * config.trainer.nnodes
-        n_gpus_rollout = config.actor_rollout_ref.rollout.n_gpus
-        assert n_gpus_rollout is not None
-        assert n_gpus_rollout > 0 and n_gpus_rollout < n_gpus
-        n_gpus_actor = n_gpus - n_gpus_rollout
-        if n_gpus_rollout % config.trainer.n_gpus_per_node == 0:
-            nnodes_rollout = n_gpus_rollout // config.trainer.n_gpus_per_node
-            actor_pool = [config.trainer.n_gpus_per_node] * (config.trainer.nnodes - nnodes_rollout)
-            rollout_pool = [config.trainer.n_gpus_per_node] * nnodes_rollout
-        elif n_gpus_rollout % config.trainer.nnodes == 0:
-            actor_pool = [n_gpus_actor // config.trainer.nnodes] * config.trainer.nnodes
-            rollout_pool = [n_gpus_rollout // config.trainer.nnodes] * config.trainer.nnodes
-        else:
-            raise ValueError("rollout.n_gpus should be divisible by n_gpus_per_node or nnodes")
+
+        assert config.trainer.n_gpus_per_node > 0, "config.trainer.n_gpus_per_node must be greater than 0"
+        assert config.trainer.nnodes > 0, "config.trainer.nnodes must be greater than 0"
+        assert config.rollout.n_gpus_per_node > 0, "config.rollout.n_gpus_per_node must be greater than 0"
+        assert config.rollout.nnodes > 0, "config.rollout.nnodes must be greater than 0"
+
+        actor_pool = [config.trainer.n_gpus_per_node] * config.trainer.nnodes
+        rollout_pool = [config.rollout.n_gpus_per_node] * config.rollout.nnodes
+
         resource_pool_spec = {
             "actor_pool": actor_pool,
             "rollout_pool": rollout_pool,

@@ -89,7 +89,6 @@ common_params=(
     actor_rollout_ref.rollout.val_kwargs.top_k=${top_k}
     actor_rollout_ref.rollout.val_kwargs.do_sample=True
     actor_rollout_ref.rollout.val_kwargs.n=1
-    actor_rollout_ref.rollout.n_gpus=${n_gpus_rollout}
     actor_rollout_ref.rollout.enable_chunked_prefill=True \
     reward_model.reward_manager=dapo
     +reward_model.reward_kwargs.overlong_buffer_cfg.enable=${enable_overlong_buffer}
@@ -100,14 +99,17 @@ common_params=(
     trainer.logger=['console']
     trainer.project_name='verl-test'
     trainer.experiment_name="${exp_name}"
-    trainer.n_gpus_per_node=${NUM_GPUS}
-    trainer.nnodes=1
     trainer.val_before_train=False
     trainer.test_freq=-1
     trainer.save_freq=-1
     trainer.total_epochs=2
     trainer.total_training_steps=2
     trainer.resume_mode=disable
+    trainer.nnodes=1
+    trainer.n_gpus_per_node=${n_gpus_training}
+    rollout.nnodes=1
+    rollout.n_gpus_per_node=${n_gpus_rollout}
+
 )
 
 if [ "${ACTOR_STRATEGY}" == "fsdp2" ]; then

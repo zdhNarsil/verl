@@ -33,6 +33,10 @@ train_prompt_mini_bsz=32
 # RUNTIME_ENV=${RUNTIME_ENV:-"${WORKING_DIR}/verl/trainer/runtime_env.yaml"}
 NNODES=${NNODES:-2}
 NGPUS_PER_NODE=${NGPUS_PER_NODE:-8}
+
+n_gpus_rollout=2
+n_gpus_training=$((NGPUS_PER_NODE - n_gpus_rollout))
+
 # Paths
 RAY_DATA_HOME=${RAY_DATA_HOME:-"${HOME}/verl"}
 # very important! please modify the max_position_embeddings in config.json to 32768 after downloading from huggingface
@@ -64,9 +68,9 @@ train_pp=2
 # actor_rollout_ref.ref.log_prob_max_token_len_per_gpu=${infer_ppo_max_token_len} \
 # actor_rollout_ref.rollout.log_prob_max_token_len_per_gpu=${infer_ppo_max_token_len} \
 
-python3 -m recipe.one_step_off_policy.async_main_ppo \
+python3 -m recipe.one_step_off_policy.main_ppo \
     --config-path=config \
-    --config-name='async_ppo_megatron_trainer.yaml' \
+    --config-name='one_step_off_ppo_megatron_trainer.yaml' \
     data.train_files="${TRAIN_FILE}" \
     data.val_files="${TEST_FILE}" \
     data.prompt_key=prompt \
@@ -116,7 +120,6 @@ python3 -m recipe.one_step_off_policy.async_main_ppo \
     actor_rollout_ref.rollout.val_kwargs.top_k=${top_k} \
     actor_rollout_ref.rollout.val_kwargs.do_sample=True \
     actor_rollout_ref.rollout.val_kwargs.n=1 \
-    actor_rollout_ref.rollout.n_gpus=4 \
     actor_rollout_ref.ref.megatron.pipeline_model_parallel_size=${train_pp} \
     actor_rollout_ref.ref.megatron.tensor_model_parallel_size=${train_tp} \
     actor_rollout_ref.ref.megatron.param_offload=${ref_offload} \
@@ -129,8 +132,6 @@ python3 -m recipe.one_step_off_policy.async_main_ppo \
     trainer.logger=['console','tensorboard'] \
     trainer.project_name="${project_name}" \
     trainer.experiment_name="${exp_name}" \
-    trainer.n_gpus_per_node=8 \
-    trainer.nnodes="${NNODES}" \
     trainer.val_before_train=True \
     trainer.test_freq=10 \
     trainer.save_freq=-1 \
@@ -138,4 +139,8 @@ python3 -m recipe.one_step_off_policy.async_main_ppo \
     trainer.total_training_steps=100 \
     trainer.default_local_dir="${CKPTS_DIR}" \
     trainer.resume_mode=auto \
-    trainer.log_val_generations=10
+    trainer.log_val_generations=10 \
+    trainer.nnodes="${NNODES}" \
+    trainer.n_gpus_per_node="${n_gpus_training}" \
+    rollout.nnodes="${NNODES}" \
+    rollout.n_gpus_per_node="${n_gpus_rollout}"

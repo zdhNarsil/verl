@@ -2,7 +2,7 @@
 
 **Author:**  `https://github.com/meituan-search>`
 
-Last updated: 07/15/2025.
+Last updated: 07/16/2025.
 
 ## Introduction
 
@@ -85,8 +85,16 @@ for asynchronous rollout generation while maintaining continuous operation durin
 via `create_continuous_iterator`.
 
 ```python
+# iterator generator, simplify one-step integration of the training process
+def _create_continuous_iterator(self):
+    for epoch in range(self.config.trainer.total_epochs):
+        iterator = iter(self.train_dataloader)
+        for batch_dict in iterator:
+            yield epoch, batch_dict
+
+
 # read next batch samples, parameters sync and launch asyn gen_seq
-def async_gen_next_batch(continuous_iterator):
+def _async_gen_next_batch(self, continuous_iterator):
     # read train_data
     try:
         epoch, batch_dict = next(continuous_iterator)
@@ -102,23 +110,15 @@ def async_gen_next_batch(continuous_iterator):
     return GenerationBatchFuture(epoch, batch, gen_batch_output)
 
 
-# iterator generator, simplify one-step integration of the training process
-def create_continuous_iterator():
-    for epoch in range(self.config.trainer.total_epochs):
-        iterator = iter(self.train_dataloader)
-        for batch_dict in iterator:
-            yield epoch, batch_dict
-
-
-continuous_iterator = create_continuous_iterator()
+continuous_iterator = self._create_continuous_iterator()
 # run rollout first to achieve one-step-off
-batch_data_future = async_gen_next_batch(continuous_iterator)
+batch_data_future = self._async_gen_next_batch(continuous_iterator)
 
 while batch_data_future is not None:
     # wait for the gen_seq result from the previous step
     batch = batch_data_future.get()
     # launch the next async call to generate sequences
-    batch_data_future = async_gen_next_batch(continuous_iterator)
+    batch_data_future = self._async_gen_next_batch(continuous_iterator)
 
     # compute advantages 
     batch = critic.compute_values(batch)
@@ -218,12 +218,15 @@ def sync_rollout_weights(self):
 ```shell
 python3 -m recipe.one_step_off_policy.async_main_ppo \
     --config-path=config \
-    --config-name='async_ppo_trainer.yaml' \
+    --config-name='one_step_off_ppo_trainer.yaml' \
     actor_rollout_ref.actor.strategy=fsdp2 \
     # actor and rollout are placed separately
     actor_rollout_ref.hybrid_engine=False \
-    # the number of gpu occupied by rollout
-    actor_rollout_ref.rollout.n_gpus=4
+    # actor and rollout resource
+    trainer.nnodes=1 \
+    trainer.n_gpus_per_node=6 \
+    rollout.nnodes=1 \
+    rollout.n_gpus_per_node=2
 ```
 
 ### Megatron Configuration Example
@@ -231,28 +234,32 @@ python3 -m recipe.one_step_off_policy.async_main_ppo \
 ```shell
 python3 -m recipe.one_step_off_policy.async_main_ppo \
     --config-path=config \
-    --config-name='async_ppo_megatron_trainer.yaml' \
+    --config-name='one_step_off_ppo_megatron_trainer.yaml' \
     actor_rollout_ref.actor.strategy=megatron \
     # actor and rollout are placed separately
     actor_rollout_ref.hybrid_engine=False \
-    # the number of gpu occupied by rollout
-    actor_rollout_ref.rollout.n_gpus=4
+    # actor and rollout resource
+    trainer.nnodes=1 \
+    trainer.n_gpus_per_node=6 \
+    rollout.nnodes=1 \
+    rollout.n_gpus_per_node=2
 ```
 
 ### Configuration Guidelines
 
 1. **Card Number Relationships**  
    Maintain either of these relationships for optimal batch distribution:
-    - `actor_rollout_ref.rollout.n_gpus` should be an integer divisor of:  
-      `trainer.n_gpus_per_node * trainer.nnodes - actor_rollout_ref.rollout.n_gpus`
+    - `actor_rollout_ref.rollout.n` should be an integer divisor of:  
+      `trainer.n_gpus_per_node * trainer.nnodes`
     - `actor_rollout_ref.rollout.n * data.train_batch_size` should be evenly divisible by:  
-      `trainer.n_gpus_per_node * trainer.nnodes - actor_rollout_ref.rollout.n_gpus`
+      `trainer.n_gpus_per_node * trainer.nnodes`
 
    > Rationale: Ensures training samples can be evenly distributed across training GPUs when using partial resources for
    generation.
 
 2. **Dynamic Resource Tuning**  
-   Adjust `actor_rollout_ref.rollout.n_gpus` based on phase durations:
+   Adjust `trainer.nnodes` `trainer.n_gpus_per_node` `rollout.nnodes` `rollout.n_gpus_per_node` based on phase
+   durations:
     - **Ideal state**: Rollout and training phases have comparable durations
     - **Diagnostic metrics**:
         - Monitor `wait_prev_gen` duration
@@ -262,6 +269,23 @@ python3 -m recipe.one_step_off_policy.async_main_ppo \
         - High `wait_prev_gen` + long-tail sequences → Optimize stopping criteria (resource increase won't help)
    > **wait_prev_gen**：The time consumed waiting for the previous rollout to end (the part that is not fully
    overlapped).
+   **Resource Configuration Strategies:**
+    - **Resource-constrained scenario**: Optimize resource utilization by adjusting GPU allocation ratios,
+      keeping the number of nodes equal to allow training and rollout to share nodes;
+        - Configure `trainer.nnodes = rollout.nnodes` with
+          `trainer.n_gpus_per_node + rollout.n_gpus_per_node = physical_gpus_per_node`. Control rollout resource
+          allocation by adjusting `n_gpus_per_node`.
+    - **Resource-abundant scenario**: Optimize performance by adjusting the number of nodes,
+      keeping the number of GPUs per node equal to enable independent scaling of training and rollout
+      parallelism.
+        - Configure `trainer.n_gpus_per_node = rollout.n_gpus_per_node` and control rollout resource allocation by
+          adjusting `trainer.nnodes` and `rollout.nnodes`to achieve optimal performance.
+   > **Note**: The total number of nodes required by the system is not simply `trainer.nnodes + rollout.nnodes`. The
+   > actual calculation depends on GPU capacity:
+   > - When `trainer.n_gpus_per_node + rollout.n_gpus_per_node <= physical_gpus_per_node`,
+       > the required node count is `max(trainer.nnodes, rollout.nnodes)`
+   > - When `trainer.n_gpus_per_node + rollout.n_gpus_per_node > physical_gpus_per_node`,
+       > the required node count is `trainer.nnodes + rollout.nnodes`
 
 ## Functional Support
 

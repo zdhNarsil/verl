@@ -51,8 +51,8 @@ Our core contributions include:
 ### Experimental Results
 
 - **Machine Configuration**: 2 nodes with 16 H20 GPUs each
-   - Generation: 4 GPUs
-   - Training: 12 GPUs
+    - Generation: 4 GPUs
+    - Training: 12 GPUs
 - **Model**: Qwen2.5-Math-7B
 - **Rollout Configuration**:
 - **Max Response Length**: FSDP2: 20,480 tokens; Megatron: 8,192 tokens
@@ -85,8 +85,15 @@ for asynchronous rollout generation while maintaining continuous operation durin
 via `create_continuous_iterator`.
 
 ```python
+# iterator generator, simplify one-step integration of the training process
+def _create_continuous_iterator(self):
+   for epoch in range(self.config.trainer.total_epochs):
+      iterator = iter(self.train_dataloader)
+      for batch_dict in iterator:
+         yield epoch, batch_dict
+
 # read next batch samples, parameters sync and launch asyn gen_seq
-def async_gen_next_batch(continuous_iterator):
+def _async_gen_next_batch(self, continuous_iterator):
     # read train_data
     try:
         epoch, batch_dict = next(continuous_iterator)
@@ -101,24 +108,15 @@ def async_gen_next_batch(continuous_iterator):
     # future encapsulated
     return GenerationBatchFuture(epoch, batch, gen_batch_output)
 
-
-# iterator generator, simplify one-step integration of the training process
-def create_continuous_iterator():
-    for epoch in range(self.config.trainer.total_epochs):
-        iterator = iter(self.train_dataloader)
-        for batch_dict in iterator:
-            yield epoch, batch_dict
-
-
-continuous_iterator = create_continuous_iterator()
+continuous_iterator = self._create_continuous_iterator()
 # run rollout first to achieve one-step-off
-batch_data_future = async_gen_next_batch(continuous_iterator)
+batch_data_future = self._async_gen_next_batch(continuous_iterator)
 
 while batch_data_future is not None:
     # wait for the gen_seq result from the previous step
     batch = batch_data_future.get()
     # launch the next async call to generate sequences
-    batch_data_future = async_gen_next_batch(continuous_iterator)
+    batch_data_future = self._async_gen_next_batch(continuous_iterator)
 
     # compute advantages 
     batch = critic.compute_values(batch)
@@ -218,7 +216,7 @@ def sync_rollout_weights(self):
 ```shell
 python3 -m recipe.one_step_off_policy.async_main_ppo \
     --config-path=config \
-    --config-name='async_ppo_trainer.yaml' \
+    --config-name='one_step_off_ppo_trainer.yaml' \
     actor_rollout_ref.actor.strategy=fsdp2 \
     # actor and rollout are placed separately
     actor_rollout_ref.hybrid_engine=False \
@@ -234,7 +232,7 @@ python3 -m recipe.one_step_off_policy.async_main_ppo \
 ```shell
 python3 -m recipe.one_step_off_policy.async_main_ppo \
     --config-path=config \
-    --config-name='async_ppo_megatron_trainer.yaml' \
+    --config-name='one_step_off_ppo_megatron_trainer.yaml' \
     actor_rollout_ref.actor.strategy=megatron \
     # actor and rollout are placed separately
     actor_rollout_ref.hybrid_engine=False \
@@ -249,23 +247,23 @@ python3 -m recipe.one_step_off_policy.async_main_ppo \
 
 1. **Card Number Relationships**  
    Maintain either of these relationships for optimal batch distribution:
-   - `actor_rollout_ref.rollout.n` should be an integer divisor of:  
-     `trainer.n_gpus_per_node * trainer.nnodes`
-   - `actor_rollout_ref.rollout.n * data.train_batch_size` should be evenly divisible by:  
-     `trainer.n_gpus_per_node * trainer.nnodes`
+    - `actor_rollout_ref.rollout.n` should be an integer divisor of:  
+      `trainer.n_gpus_per_node * trainer.nnodes`
+    - `actor_rollout_ref.rollout.n * data.train_batch_size` should be evenly divisible by:  
+      `trainer.n_gpus_per_node * trainer.nnodes`
 
    > Rationale: Ensures training samples can be evenly distributed across training GPUs when using partial resources for
    generation.
 
 2. **Dynamic Resource Tuning**  
    Adjust `trainer.nnodes` `trainer.n_gpus_per_node` `rollout.nnodes` `rollout.n_gpus_per_node` based on phase durations:
-   - **Ideal state**: Rollout and training phases have comparable durations
-   - **Diagnostic metrics**:
-      - Monitor `wait_prev_gen` duration
-      - Analyze `sequence_length` distribution
-   - **Adjustment strategy**:
-      - High `wait_prev_gen` + uniform sequence lengths → Increase rollout resources
-      - High `wait_prev_gen` + long-tail sequences → Optimize stopping criteria (resource increase won't help)
+    - **Ideal state**: Rollout and training phases have comparable durations
+    - **Diagnostic metrics**:
+        - Monitor `wait_prev_gen` duration
+        - Analyze `sequence_length` distribution
+    - **Adjustment strategy**:
+        - High `wait_prev_gen` + uniform sequence lengths → Increase rollout resources
+        - High `wait_prev_gen` + long-tail sequences → Optimize stopping criteria (resource increase won't help)
    > **wait_prev_gen**：The time consumed waiting for the previous rollout to end (the part that is not fully
    overlapped).
 

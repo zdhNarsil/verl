@@ -88,7 +88,7 @@ class GenerationBatchFuture:
         return self.epoch, self.batch, gen_batch_result
 
 
-class AsyncRayPPOTrainer(RayPPOTrainer):
+class OneStepOffRayTrainer(RayPPOTrainer):
     # TODO: support each role have individual ray_worker_group_cls,
     # i.e., support different backend of different role
     def __init__(
@@ -300,6 +300,50 @@ class AsyncRayPPOTrainer(RayPPOTrainer):
             self.actor_wg.sync_rollout_weights()
             ray.get(self.rollout_wg.sync_rollout_weights())
 
+    def _create_continuous_iterator(self):
+        """
+        Create a continuous data iterator across epoch
+        """
+        for epoch in range(self.config.trainer.total_epochs):
+                iterator = iter(self.train_dataloader)
+                for batch_dict in iterator:
+                    yield epoch, batch_dict
+
+
+    def _async_gen_next_batch(self, continuous_iterator):
+        """
+        Call parameter synchronization and asynchronous sequence generation.
+        """
+        try:
+            epoch, batch_dict = next(continuous_iterator)
+        except StopIteration:
+            return None
+        except Exception as e:
+            print(f"Error in async_gen_next_batch: {e}")
+            return None
+        batch = DataProto.from_single_dict(batch_dict)
+        # pop those keys for generation
+        batch_keys_to_pop = ["input_ids", "attention_mask", "position_ids"]
+        non_tensor_batch_keys_to_pop = ["raw_prompt_ids"]
+        if "multi_modal_data" in batch.non_tensor_batch:
+            non_tensor_batch_keys_to_pop.append("multi_modal_data")
+        if "raw_prompt" in batch.non_tensor_batch:
+            non_tensor_batch_keys_to_pop.append("raw_prompt")
+        if "tools_kwargs" in batch.non_tensor_batch:
+            non_tensor_batch_keys_to_pop.append("tools_kwargs")
+        if "interaction_kwargs" in batch.non_tensor_batch:
+            non_tensor_batch_keys_to_pop.append("interaction_kwargs")
+        gen_batch = batch.pop(
+            batch_keys=batch_keys_to_pop,
+            non_tensor_batch_keys=non_tensor_batch_keys_to_pop,
+        )
+        gen_batch = gen_batch.repeat(repeat_times=self.config.actor_rollout_ref.rollout.n, interleave=True)
+        # sync weights from actor to rollout
+        self.sync_rollout_weights()
+        # async generation
+        gen_batch_output = self.rollout_wg.async_generate_sequences(gen_batch)
+        return GenerationBatchFuture(epoch, batch, gen_batch_output)
+
     def fit(self):
         """
         The training loop of PPO.
@@ -340,57 +384,11 @@ class AsyncRayPPOTrainer(RayPPOTrainer):
         self.global_steps += 1
         last_val_metrics = None
 
-        def create_continuous_iterator():
-            """
-            Create a continuous data iterator across epochs
-            """
-            for epoch in range(self.config.trainer.total_epochs):
-                iterator = iter(self.train_dataloader)
-                for batch_dict in iterator:
-                    yield epoch, batch_dict
-
-        def async_gen_next_batch(continuous_iterator):
-            """
-            Call parameter synchronization and asynchronous sequence generation.
-            """
-            try:
-                epoch, batch_dict = next(continuous_iterator)
-            except StopIteration:
-                return None
-            except Exception as e:
-                print(f"Error in async_gen_next_batch: {e}")
-                return None
-
-            batch = DataProto.from_single_dict(batch_dict)
-            # pop those keys for generation
-            batch_keys_to_pop = ["input_ids", "attention_mask", "position_ids"]
-            non_tensor_batch_keys_to_pop = ["raw_prompt_ids"]
-            if "multi_modal_data" in batch.non_tensor_batch:
-                non_tensor_batch_keys_to_pop.append("multi_modal_data")
-            if "raw_prompt" in batch.non_tensor_batch:
-                non_tensor_batch_keys_to_pop.append("raw_prompt")
-            if "tools_kwargs" in batch.non_tensor_batch:
-                non_tensor_batch_keys_to_pop.append("tools_kwargs")
-            if "interaction_kwargs" in batch.non_tensor_batch:
-                non_tensor_batch_keys_to_pop.append("interaction_kwargs")
-            gen_batch = batch.pop(
-                batch_keys=batch_keys_to_pop,
-                non_tensor_batch_keys=non_tensor_batch_keys_to_pop,
-            )
-            gen_batch = gen_batch.repeat(repeat_times=self.config.actor_rollout_ref.rollout.n, interleave=True)
-            # sync weights from actor to rollout
-            self.sync_rollout_weights()
-
-            # async generation
-            gen_batch_output = self.rollout_wg.async_generate_sequences(gen_batch)
-
-            return GenerationBatchFuture(epoch, batch, gen_batch_output)
-
         # across epoch iterator
-        continuous_iterator = create_continuous_iterator()
+        continuous_iterator = self._create_continuous_iterator()
 
         # Start the first asynchronous generation task.
-        batch_data_future = async_gen_next_batch(continuous_iterator)
+        batch_data_future = self._async_gen_next_batch(continuous_iterator)
 
         while batch_data_future is not None:
             do_profile = (
@@ -423,7 +421,7 @@ class AsyncRayPPOTrainer(RayPPOTrainer):
                 # asys next generation (with syns weights from actor to rollout)
                 with marked_timer("sync_rollout_weights", timing_raw, color="purple"):
                     if not is_last_step:
-                        batch_data_future = async_gen_next_batch(continuous_iterator)
+                        batch_data_future = self._async_gen_next_batch(continuous_iterator)
 
                 batch.non_tensor_batch["uid"] = np.array(
                     [str(uuid.uuid4()) for _ in range(len(batch.batch))], dtype=object

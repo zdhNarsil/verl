@@ -27,10 +27,10 @@ from verl.trainer.constants_ppo import PPO_RAY_RUNTIME_ENV
 from verl.trainer.main_ppo import create_rl_dataset, create_rl_sampler
 from verl.trainer.ppo.reward import load_reward_manager
 
-from .async_ray_trainer import AsyncRayPPOTrainer
+from .ray_trainer import OneStepOffRayTrainer
 
 
-@hydra.main(config_path="config", config_name="async_ppo_trainer", version_base=None)
+@hydra.main(config_path="config", config_name="one_step_off_ppo_trainer", version_base=None)
 def main(config):
     run_ppo(config)
 
@@ -102,7 +102,7 @@ class TaskRunner:
             assert config.actor_rollout_ref.actor.strategy == config.critic.strategy
             from verl.single_controller.ray import RayWorkerGroup
 
-            from .async_fsdp_workers import (
+            from .fsdp_workers import (
                 ActorRolloutRefWorker,
                 AsyncActorRolloutRefWorker,
                 CriticWorker,
@@ -120,7 +120,7 @@ class TaskRunner:
             assert config.actor_rollout_ref.actor.strategy == config.critic.strategy
             from verl.single_controller.ray.megatron import NVMegatronRayWorkerGroup
 
-            from .async_megatron_workers import (
+            from .megatron_workers import (
                 ActorRolloutRefWorker,
                 AsyncActorRolloutRefWorker,
                 CriticWorker,
@@ -137,7 +137,7 @@ class TaskRunner:
         else:
             raise NotImplementedError
 
-        from .async_ray_trainer import ResourcePoolManager, Role
+        from .ray_trainer import ResourcePoolManager, Role
 
         role_worker_mapping = {
             Role.Actor: ray.remote(actor_rollout_cls),
@@ -203,7 +203,7 @@ class TaskRunner:
         train_sampler = create_rl_sampler(config.data, train_dataset)
 
         # Initialize the PPO trainer.
-        trainer = AsyncRayPPOTrainer(
+        trainer = OneStepOffRayTrainer(
             config=config,
             tokenizer=tokenizer,
             processor=processor,

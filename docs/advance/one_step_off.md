@@ -87,10 +87,11 @@ via `create_continuous_iterator`.
 ```python
 # iterator generator, simplify one-step integration of the training process
 def _create_continuous_iterator(self):
-   for epoch in range(self.config.trainer.total_epochs):
-      iterator = iter(self.train_dataloader)
-      for batch_dict in iterator:
-         yield epoch, batch_dict
+    for epoch in range(self.config.trainer.total_epochs):
+        iterator = iter(self.train_dataloader)
+        for batch_dict in iterator:
+            yield epoch, batch_dict
+
 
 # read next batch samples, parameters sync and launch asyn gen_seq
 def _async_gen_next_batch(self, continuous_iterator):
@@ -107,6 +108,7 @@ def _async_gen_next_batch(self, continuous_iterator):
     gen_batch_output = self.rollout_wg.async_generate_sequences(gen_batch)
     # future encapsulated
     return GenerationBatchFuture(epoch, batch, gen_batch_output)
+
 
 continuous_iterator = self._create_continuous_iterator()
 # run rollout first to achieve one-step-off
@@ -224,7 +226,7 @@ python3 -m recipe.one_step_off_policy.async_main_ppo \
     trainer.nnodes=1 \
     trainer.n_gpus_per_node=6 \
     rollout.nnodes=1 \
-    rollout.n_gpus_per_node= 2
+    rollout.n_gpus_per_node=2
 ```
 
 ### Megatron Configuration Example
@@ -240,7 +242,7 @@ python3 -m recipe.one_step_off_policy.async_main_ppo \
     trainer.nnodes=1 \
     trainer.n_gpus_per_node=6 \
     rollout.nnodes=1 \
-    rollout.n_gpus_per_node= 2
+    rollout.n_gpus_per_node=2
 ```
 
 ### Configuration Guidelines
@@ -256,7 +258,8 @@ python3 -m recipe.one_step_off_policy.async_main_ppo \
    generation.
 
 2. **Dynamic Resource Tuning**  
-   Adjust `trainer.nnodes` `trainer.n_gpus_per_node` `rollout.nnodes` `rollout.n_gpus_per_node` based on phase durations:
+   Adjust `trainer.nnodes` `trainer.n_gpus_per_node` `rollout.nnodes` `rollout.n_gpus_per_node` based on phase
+   durations:
     - **Ideal state**: Rollout and training phases have comparable durations
     - **Diagnostic metrics**:
         - Monitor `wait_prev_gen` duration
@@ -267,7 +270,8 @@ python3 -m recipe.one_step_off_policy.async_main_ppo \
    > **wait_prev_gen**：The time consumed waiting for the previous rollout to end (the part that is not fully
    overlapped).
 
-   > **Note**: The total number of nodes required by the system is not simply `trainer.nnodes + rollout.nnodes`. The actual calculation depends on GPU capacity:
+   > **Note**: The total number of nodes required by the system is not simply `trainer.nnodes + rollout.nnodes`. The
+   actual calculation depends on GPU capacity:
    > - When `trainer.n_gpus_per_node + rollout.n_gpus_per_node <= physical_gpus_per_node`,
        >   the required node count is `max(trainer.nnodes, rollout.nnodes)`
    > - When `trainer.n_gpus_per_node + rollout.n_gpus_per_node > physical_gpus_per_node`,

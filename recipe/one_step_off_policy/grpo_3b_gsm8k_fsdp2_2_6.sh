@@ -61,4 +61,4 @@ python3 -m recipe.one_step_off_policy.main_ppo \
     trainer.nnodes="${NNODES}" \
     trainer.n_gpus_per_node="${n_gpus_training}" \
     rollout.nnodes="${NNODES}" \
-    rollout.n_gpus_per_node="${n_gpus_rollout}"
+    rollout.n_gpus_per_node="${n_gpus_rollout}" $@

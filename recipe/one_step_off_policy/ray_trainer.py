@@ -305,10 +305,9 @@ class OneStepOffRayTrainer(RayPPOTrainer):
         Create a continuous data iterator across epoch
         """
         for epoch in range(self.config.trainer.total_epochs):
-                iterator = iter(self.train_dataloader)
-                for batch_dict in iterator:
-                    yield epoch, batch_dict
-
+            iterator = iter(self.train_dataloader)
+            for batch_dict in iterator:
+                yield epoch, batch_dict
 
     def _async_gen_next_batch(self, continuous_iterator):
         """

@@ -1270,6 +1270,19 @@ def compute_value_loss(
 
 
 def kl_penalty(logprob: torch.FloatTensor, ref_logprob: torch.FloatTensor, kl_penalty) -> torch.FloatTensor:
+    """ To ensure a correct gradient of KL
+    k1 and the commonly adopted k3 estimator gives a correct estimator -- their expectation is KL
+    however, the expectation of the gradient of these estimators is not the gradient of KL
+    On the other hand, one can show expected gradient of k2 is the true gradient of KL
+    So we can use a straight through trick
+    """
+    forward_score = kl_penalty_forward(logprob, ref_logprob, kl_penalty)
+    backward_score = 0.5 * (logprob - ref_logprob).square()
+    # straight through estimator
+    return backward_score - backward_score.detach() + forward_score.detach()
+
+
+def kl_penalty_forward(logprob: torch.FloatTensor, ref_logprob: torch.FloatTensor, kl_penalty) -> torch.FloatTensor:
     """Compute KL divergence given logprob and ref_logprob.
     Copied from https://github.com/huggingface/trl/blob/main/trl/trainer/ppo_trainer.py#L1104
     See more description in http://joschu.net/blog/kl-approx.html
